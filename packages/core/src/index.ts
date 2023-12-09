@@ -2,9 +2,9 @@ import { Context } from 'cordis'
 import { MaybeArray, remove, trimSlash } from 'cosmokit'
 import { createServer, IncomingMessage, Server } from 'http'
 import { pathToRegexp } from 'path-to-regexp'
+import type { Logger } from '@cordisjs/logger'
 import parseUrl from 'parseurl'
 import WebSocket from 'ws'
-import Logger from 'reggol'
 import Schema from 'schemastery'
 import KoaRouter from '@koa/router'
 import Koa from 'koa'
@@ -20,11 +20,13 @@ declare module 'koa' {
 
 declare module 'cordis' {
   interface Context {
+    server: Router
+    /** @deprecated use `ctx.server` instead */
     router: Router
   }
 
   interface Events {
-    'router/ready'(this: Router): void
+    'server/ready'(this: Router): void
   }
 }
 
@@ -34,7 +36,7 @@ export class WebSocketLayer {
   clients = new Set<WebSocket>()
   regexp: RegExp
 
-  constructor(private router: Router, path: MaybeArray<string | RegExp>, public callback?: WebSocketCallback) {
+  constructor(private server: Router, path: MaybeArray<string | RegExp>, public callback?: WebSocketCallback) {
     this.regexp = pathToRegexp(path)
   }
 
@@ -49,12 +51,14 @@ export class WebSocketLayer {
   }
 
   close() {
-    remove(this.router.wsStack, this)
+    remove(this.server.wsStack, this)
     for (const socket of this.clients) {
       socket.close()
     }
   }
 }
+
+export interface Router extends Context.Associate<'server'> {}
 
 export class Router extends KoaRouter {
   public _http: Server
@@ -68,7 +72,9 @@ export class Router extends KoaRouter {
 
   constructor(protected ctx: Context, public config: Router.Config) {
     super()
-    this.logger = new Logger('router', { [Context.current]: this })
+    ctx.provide('server')
+    ctx.alias('server', ['router'])
+    this.logger = ctx.logger('server')
 
     // create server
     const koa = new Koa()
@@ -107,7 +113,7 @@ export class Router extends KoaRouter {
       this.port = await listen(config)
       this._http.listen(this.port, host)
       this.logger.info('server listening at %c', this.selfUrl)
-      ctx.emit(this, 'router/ready')
+      ctx.emit(this, 'server/ready')
     }, true)
 
     ctx.on('dispose', () => {
@@ -118,15 +124,18 @@ export class Router extends KoaRouter {
       this._http?.close()
     })
 
-    ctx.on<any>('event/router/ready', (ctx: Context, listener: Function) => {
-      if (!this[Context.filter](ctx) || !this.port) return
-      ctx.scope.ensure(async () => listener())
+    const self = this
+    ctx.on('internal/listener', function (name: string, listener: Function) {
+      if (name !== 'server/ready' || !self[Context.filter](this) || !self.port) return
+      this.scope.ensure(async () => listener())
       return () => false
     })
+
+    return ctx.server = Context.associate(this, 'server')
   }
 
   [Context.filter](ctx: Context) {
-    return ctx[Context.shadow].router === this.ctx[Context.shadow].router
+    return ctx[Context.shadow].server === this.ctx[Context.shadow].server
   }
 
   get selfUrl() {

@@ -112,7 +112,7 @@ export class Router extends KoaRouter {
       this.host = host
       this.port = await listen(config)
       this._http.listen(this.port, host)
-      this.logger.info('server listening at %c', this.selfUrl)
+      this.logger.info('server listening at %c', `http://${host}:${this.port}`)
       ctx.emit(this, 'server/ready')
     }, true)
 

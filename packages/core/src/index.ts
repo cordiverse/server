@@ -2,9 +2,10 @@ import { Context } from 'cordis'
 import { MaybeArray, remove, trimSlash } from 'cosmokit'
 import { createServer, IncomingMessage, Server } from 'http'
 import { pathToRegexp } from 'path-to-regexp'
+import bodyParser from 'koa-bodyparser'
 import type { Logger } from '@cordisjs/logger'
 import parseUrl from 'parseurl'
-import WebSocket from 'ws'
+import { WebSocket, WebSocketServer } from 'ws'
 import Schema from 'schemastery'
 import KoaRouter from '@koa/router'
 import Koa from 'koa'
@@ -62,7 +63,7 @@ export interface Router extends Context.Associate<'server'> {}
 
 export class Router extends KoaRouter {
   public _http: Server
-  public _ws: WebSocket.Server
+  public _ws: WebSocketServer
   public wsStack: WebSocketLayer[] = []
 
   public host!: string
@@ -78,7 +79,7 @@ export class Router extends KoaRouter {
 
     // create server
     const koa = new Koa()
-    koa.use(require('koa-bodyparser')({
+    koa.use(bodyParser({
       enableTypes: ['json', 'form', 'xml'],
       jsonLimit: '10mb',
       formLimit: '10mb',
@@ -89,7 +90,7 @@ export class Router extends KoaRouter {
     koa.use(this.allowedMethods())
 
     this._http = createServer(koa.callback())
-    this._ws = new WebSocket.Server({
+    this._ws = new WebSocketServer({
       server: this._http,
     })
 

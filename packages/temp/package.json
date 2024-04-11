@@ -1,0 +1,34 @@
+{
+  "name": "@cordisjs/server-temp",
+  "description": "Temp server plugin for cordis",
+  "version": "0.3.0",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "author": "Shigma <shigma10826@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cordisjs/server.git",
+    "directory": "packages/temp"
+  },
+  "bugs": {
+    "url": "https://github.com/cordisjs/server/issues"
+  },
+  "homepage": "https://github.com/cordisjs/server/tree/main/packages/temp",
+  "keywords": [
+    "cordis",
+    "router",
+    "http",
+    "temporary",
+    "server",
+    "service",
+    "plugin"
+  ],
+  "devDependencies": {
+    "undios": "^0.3.2"
+  }
+}

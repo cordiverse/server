@@ -143,7 +143,13 @@ export class Server extends KoaRouter {
   get selfUrl() {
     const wildcard = ['0.0.0.0', '::']
     const host = wildcard.includes(this.host) ? '127.0.0.1' : this.host
-    return `http://${host}:${this.port}`
+    if (this.port === 80) {
+      return `http://${host}`
+    } else if (this.port === 443) {
+      return `https://${host}`
+    } else {
+      return `http://${host}:${this.port}`
+    }
   }
 
   /**

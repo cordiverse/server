@@ -1,7 +1,7 @@
 {
-  "name": "@cordisjs/server-temp",
+  "name": "@cordisjs/plugin-server-temp",
   "description": "Temp server plugin for cordis",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -29,6 +29,6 @@
     "plugin"
   ],
   "devDependencies": {
-    "undios": "^0.3.2"
+    "undios": "^0.3.3"
   }
 }

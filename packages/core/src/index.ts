@@ -1,9 +1,8 @@
 import { Context } from 'cordis'
 import { MaybeArray, remove, trimSlash } from 'cosmokit'
-import { createServer, IncomingMessage, Server } from 'http'
+import { createServer, IncomingMessage, Server as HTTPServer } from 'http'
 import { pathToRegexp } from 'path-to-regexp'
 import bodyParser from 'koa-bodyparser'
-import type { Logger } from '@cordisjs/logger'
 import parseUrl from 'parseurl'
 import { WebSocket, WebSocketServer } from 'ws'
 import Schema from 'schemastery'
@@ -21,13 +20,19 @@ declare module 'koa' {
 
 declare module 'cordis' {
   interface Context {
-    server: Router
+    [Context.Server]: Context.Server<this>
+    server: Server & this[typeof Context.Server]
     /** @deprecated use `ctx.server` instead */
-    router: Router
+    router: Server
   }
 
   interface Events {
-    'server/ready'(this: Router): void
+    'server/ready'(this: Server): void
+  }
+
+  namespace Context {
+    const Server: unique symbol
+    interface Server<C extends Context> {}
   }
 }
 
@@ -37,7 +42,7 @@ export class WebSocketLayer {
   clients = new Set<WebSocket>()
   regexp: RegExp
 
-  constructor(private server: Router, path: MaybeArray<string | RegExp>, public callback?: WebSocketCallback) {
+  constructor(private server: Server, path: MaybeArray<string | RegExp>, public callback?: WebSocketCallback) {
     this.regexp = pathToRegexp(path)
   }
 
@@ -59,37 +64,33 @@ export class WebSocketLayer {
   }
 }
 
-export interface Router extends Context.Associate<'server'> {}
-
-export class Router extends KoaRouter {
-  public _http: Server
+export class Server extends KoaRouter {
+  public _http: HTTPServer
   public _ws: WebSocketServer
   public wsStack: WebSocketLayer[] = []
+  public _koa = new Koa()
 
   public host!: string
   public port!: number
 
-  private logger: Logger
-
-  constructor(protected ctx: Context, public config: Router.Config) {
+  constructor(protected ctx: Context, public config: Server.Config) {
     super()
+    ctx.runtime.name = 'server'
     ctx.provide('server')
     ctx.alias('server', ['router'])
-    this.logger = ctx.logger('server')
 
     // create server
-    const koa = new Koa()
-    koa.use(bodyParser({
+    this._koa.use(bodyParser({
       enableTypes: ['json', 'form', 'xml'],
       jsonLimit: '10mb',
       formLimit: '10mb',
       textLimit: '10mb',
       xmlLimit: '10mb',
     }))
-    koa.use(this.routes())
-    koa.use(this.allowedMethods())
+    this._koa.use(this.routes())
+    this._koa.use(this.allowedMethods())
 
-    this._http = createServer(koa.callback())
+    this._http = createServer(this._koa.callback())
     this._ws = new WebSocketServer({
       server: this._http,
     })
@@ -113,13 +114,13 @@ export class Router extends KoaRouter {
       this.host = host
       this.port = await listen(config)
       this._http.listen(this.port, host)
-      this.logger.info('server listening at %c', `http://${host}:${this.port}`)
+      this.ctx.logger.info('server listening at %c', `http://${host}:${this.port}`)
       ctx.emit(this, 'server/ready')
     }, true)
 
     ctx.on('dispose', () => {
       if (config.port) {
-        this.logger.info('http server closing')
+        this.ctx.logger.info('http server closing')
       }
       this._ws?.close()
       this._http?.close()
@@ -136,7 +137,7 @@ export class Router extends KoaRouter {
   }
 
   [Context.filter](ctx: Context) {
-    return ctx[Context.shadow].server === this.ctx[Context.shadow].server
+    return ctx[Context.isolate].server === this.ctx[Context.isolate].server
   }
 
   get selfUrl() {
@@ -166,7 +167,7 @@ export class Router extends KoaRouter {
   }
 }
 
-export namespace Router {
+export namespace Server {
   export interface Config {
     host: string
     port: number
@@ -182,4 +183,4 @@ export namespace Router {
   })
 }
 
-export default Router
+export default Server

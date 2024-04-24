@@ -11,6 +11,12 @@ declare module 'cordis' {
   interface Context {
     'server.temp': TempServer
   }
+
+  namespace Context {
+    interface Server<C> {
+      temp: TempServer
+    }
+  }
 }
 
 export interface Entry {
@@ -29,7 +35,7 @@ class TempServer extends Service {
   public entries: Dict<Entry> = Object.create(null)
 
   constructor(protected ctx: Context, public config: TempServer.Config) {
-    super(ctx, 'server.temp', true)
+    super(ctx, 'server.temp')
     const logger = ctx.logger('temp')
 
     this.path = sanitize(config.path)
@@ -44,15 +50,11 @@ class TempServer extends Service {
       if (!entry) return koa.status = 404
       koa.body = createReadStream(entry.path)
     })
-
-    ctx.on('ready', () => this.start())
-    ctx.on('dispose', () => this.stop())
   }
 
   async start() {
     this.baseDir = this.ctx.baseDir + '/temp/' + Math.random().toString(36).slice(2) + '/'
     await mkdir(this.baseDir, { recursive: true })
-    this.ctx.server.temp = this
   }
 
   async stop() {

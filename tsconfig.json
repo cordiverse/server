@@ -3,8 +3,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@cordisjs/server": ["packages/core/src"],
-      "@cordisjs/server-*": ["packages/*/src"],
+      "@cordisjs/plugin-server": ["packages/core/src"],
+      "@cordisjs/plugin-server-*": ["packages/*/src"],
     },
   },
   "files": [],

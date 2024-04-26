@@ -1,6 +1,6 @@
 import { Context } from 'cordis'
 import { MaybeArray, remove, trimSlash } from 'cosmokit'
-import { createServer, IncomingMessage, Server as HTTPServer } from 'http'
+import { createServer, Server as HTTPServer, IncomingMessage } from 'node:http'
 import { pathToRegexp } from 'path-to-regexp'
 import bodyParser from 'koa-bodyparser'
 import parseUrl from 'parseurl'
@@ -32,6 +32,7 @@ declare module 'cordis' {
 
   namespace Context {
     const Server: unique symbol
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     interface Server<C extends Context> {}
   }
 }

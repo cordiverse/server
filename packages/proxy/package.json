@@ -1,0 +1,31 @@
+{
+  "name": "@cordisjs/plugin-server-proxy",
+  "description": "Proxy plugin for cordis",
+  "version": "0.2.0",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "author": "Shigma <shigma10826@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cordiverse/server.git",
+    "directory": "packages/proxy"
+  },
+  "bugs": {
+    "url": "https://github.com/cordiverse/server/issues"
+  },
+  "homepage": "https://github.com/cordiverse/server/tree/main/packages/proxy",
+  "keywords": [
+    "cordis",
+    "router",
+    "http",
+    "proxy",
+    "server",
+    "service",
+    "plugin"
+  ]
+}

@@ -32,8 +32,9 @@ declare module 'cordis' {
 
   namespace Context {
     const Server: unique symbol
+    // https://github.com/typescript-eslint/typescript-eslint/issues/6720
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    interface Server<C extends Context> {}
+    interface Server<C extends Context = Context> {}
   }
 }
 
@@ -121,7 +122,7 @@ export class Server extends KoaRouter {
 
     ctx.on('dispose', () => {
       if (config.port) {
-        this.ctx.logger.info('http server closing')
+        this.ctx.logger.info('server closing')
       }
       this._ws?.close()
       this._http?.close()

@@ -67,6 +67,11 @@ export class WebSocketLayer {
 }
 
 export class Server extends KoaRouter {
+  [Service.tracker] = {
+    associate: 'server',
+    property: 'ctx',
+  }
+  
   public _http: HTTPServer
   public _ws: WebSocketServer
   public wsStack: WebSocketLayer[] = []
@@ -159,8 +164,7 @@ export class Server extends KoaRouter {
    */
   register(...args: Parameters<KoaRouter['register']>) {
     const layer = super.register(...args)
-    const context = this[Context.current]
-    context?.state.disposables.push(() => {
+    this.ctx.state.disposables.push(() => {
       remove(this.stack, layer)
     })
     return layer
@@ -169,8 +173,7 @@ export class Server extends KoaRouter {
   ws(path: MaybeArray<string | RegExp>, callback?: WebSocketCallback) {
     const layer = new WebSocketLayer(this, path, callback)
     this.wsStack.push(layer)
-    const context = this[Context.current]
-    context?.state.disposables.push(() => layer.close())
+    this.ctx.state.disposables.push(() => layer.close())
     return layer
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@cordisjs/plugin-server-temp",
   "description": "Temp server plugin for cordis",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -29,6 +29,15 @@
     "plugin"
   ],
   "devDependencies": {
-    "@cordisjs/plugin-http": "^0.4.0"
+    "@cordisjs/plugin-http": "^0.6.1",
+    "@cordisjs/plugin-server": "^0.2.4",
+    "cordis": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@cordisjs/plugin-server": "^0.2.4",
+    "cordis": "^3.18.1"
+  },
+  "dependencies": {
+    "cosmokit": "^1.6.3"
   }
 }

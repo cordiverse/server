@@ -1,14 +1,16 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "module": "commonjs",
+    "module": "esnext",
     "declaration": true,
+    "emitDeclarationOnly": true,
     "sourceMap": true,
     "composite": true,
     "incremental": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "moduleResolution": "node",
-    "strictBindCallApply": true,
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noImplicitAny": false,
   },
 }

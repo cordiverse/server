@@ -13,7 +13,7 @@ declare module 'cordis' {
   }
 
   namespace Context {
-    interface Server<C> {
+    interface Server {
       temp: TempServer
     }
   }
@@ -26,7 +26,6 @@ export interface Entry {
 }
 
 class TempServer extends Service {
-  static [Service.provide] = 'server.temp'
   static inject = ['server', 'http']
 
   public path: string
@@ -77,7 +76,7 @@ class TempServer extends Service {
       path = this.baseDir + name
       await writeFile(path, data instanceof ReadableStream ? Readable.fromWeb(data as any) : data)
     }
-    return this[Context.origin].effect(() => {
+    return this.ctx.effect(() => {
       const timer = setTimeout(() => dispose(), this.config.maxAge)
       const dispose = async () => {
         clearTimeout(timer)

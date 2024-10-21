@@ -1,8 +1,8 @@
-import { Context } from 'cordis'
+import { Context, Service } from 'cordis'
 import { MaybeArray, remove, trimSlash } from 'cosmokit'
 import { createServer, Server as HTTPServer, IncomingMessage } from 'node:http'
 import { pathToRegexp } from 'path-to-regexp'
-import bodyParser from 'koa-bodyparser'
+import { koaBody } from 'koa-body'
 import parseUrl from 'parseurl'
 import { WebSocket, WebSocketServer } from 'ws'
 import Schema from 'schemastery'
@@ -10,20 +10,12 @@ import KoaRouter from '@koa/router'
 import Koa from 'koa'
 import { listen } from './listen'
 
-declare module 'koa' {
-  // koa-bodyparser
-  interface Request {
-    body?: any
-    rawBody?: string
-  }
-}
+export {} from 'koa-body'
 
 declare module 'cordis' {
   interface Context {
     [Context.Server]: Context.Server<this>
     server: Server & this[typeof Context.Server]
-    /** @deprecated use `ctx.server` instead */
-    router: Server
   }
 
   interface Events {
@@ -87,12 +79,12 @@ export class Server extends KoaRouter {
     ctx.alias('server', ['router'])
 
     // create server
-    this._koa.use(bodyParser({
-      enableTypes: ['json', 'form', 'xml'],
+    this._koa.use(koaBody({
+      multipart: true,
       jsonLimit: '10mb',
       formLimit: '10mb',
       textLimit: '10mb',
-      xmlLimit: '10mb',
+      includeUnparsed: true,
     }))
     this._koa.use(this.routes())
     this._koa.use(this.allowedMethods())
@@ -133,14 +125,15 @@ export class Server extends KoaRouter {
       this._http?.close()
     })
 
-    const self = this
+    const self = Context.associate(this, 'server')
+    ctx.set('server', self)
     ctx.on('internal/listener', function (name: string, listener: Function) {
       if (name !== 'server/ready' || !self[Context.filter](this) || !self.port) return
       this.scope.ensure(async () => listener())
       return () => false
     })
 
-    return ctx.server = Context.associate(this, 'server')
+    return self
   }
 
   [Context.filter](ctx: Context) {
@@ -164,7 +157,7 @@ export class Server extends KoaRouter {
    */
   register(...args: Parameters<KoaRouter['register']>) {
     const layer = super.register(...args)
-    this.ctx.state.disposables.push(() => {
+    this.ctx.scope.disposables.push(() => {
       remove(this.stack, layer)
     })
     return layer
@@ -173,7 +166,7 @@ export class Server extends KoaRouter {
   ws(path: MaybeArray<string | RegExp>, callback?: WebSocketCallback) {
     const layer = new WebSocketLayer(this, path, callback)
     this.wsStack.push(layer)
-    this.ctx.state.disposables.push(() => layer.close())
+    this.ctx.scope.disposables.push(() => layer.close())
     return layer
   }
 }

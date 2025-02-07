@@ -1,12 +1,12 @@
 import { Context, Service } from 'cordis'
-import { MaybeArray, remove, trimSlash } from 'cosmokit'
+import { makeArray, MaybeArray, remove, trimSlash } from 'cosmokit'
 import { createServer, Server as HTTPServer, IncomingMessage } from 'node:http'
 import { pathToRegexp } from 'path-to-regexp'
 import { koaBody } from 'koa-body'
 import parseUrl from 'parseurl'
 import { WebSocket, WebSocketServer } from 'ws'
 import Schema from 'schemastery'
-import KoaRouter from '@koa/router'
+import KoaRouter, { Middleware } from '@koa/router'
 import Koa from 'koa'
 import { listen } from './listen'
 
@@ -68,6 +68,7 @@ export class Server extends KoaRouter {
   public _ws: WebSocketServer
   public wsStack: WebSocketLayer[] = []
   public _koa = new Koa()
+  public _body: Middleware
 
   public host!: string
   public port!: number
@@ -79,13 +80,13 @@ export class Server extends KoaRouter {
     ctx.alias('server', ['router'])
 
     // create server
-    this._koa.use(koaBody({
+    this._body = koaBody({
       multipart: true,
       jsonLimit: '10mb',
       formLimit: '10mb',
       textLimit: '10mb',
       includeUnparsed: true,
-    }))
+    })
     this._koa.use(this.routes())
     this._koa.use(this.allowedMethods())
 
@@ -156,6 +157,10 @@ export class Server extends KoaRouter {
    * hack into router methods to make sure that koa middlewares are disposable
    */
   register(...args: Parameters<KoaRouter['register']>) {
+    args[2] = makeArray(args[2])
+    if (!args[2][0][Symbol.for('noParseBody')]) {
+      args[2].unshift(this._body)
+    }
     const layer = super.register(...args)
     this.ctx.scope.disposables.push(() => {
       remove(this.stack, layer)

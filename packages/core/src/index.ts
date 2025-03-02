@@ -1,11 +1,10 @@
-import { Context, Service } from 'cordis'
+import { Context, Service, z } from 'cordis'
 import { makeArray, MaybeArray, remove, trimSlash } from 'cosmokit'
 import { createServer, Server as HTTPServer, IncomingMessage } from 'node:http'
 import { pathToRegexp } from 'path-to-regexp'
 import { koaBody } from 'koa-body'
 import parseUrl from 'parseurl'
 import { WebSocket, WebSocketServer } from 'ws'
-import Schema from 'schemastery'
 import KoaRouter, { Middleware } from '@koa/router'
 import Koa from 'koa'
 import { listen } from './listen'
@@ -14,19 +13,11 @@ export {} from 'koa-body'
 
 declare module 'cordis' {
   interface Context {
-    [Context.Server]: Context.Server<this>
-    server: Server & this[typeof Context.Server]
+    server: Server
   }
 
   interface Events {
     'server/ready'(this: Server): void
-  }
-
-  namespace Context {
-    const Server: unique symbol
-    // https://github.com/typescript-eslint/typescript-eslint/issues/6720
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    interface Server<C extends Context = Context> {}
   }
 }
 
@@ -63,7 +54,11 @@ export class Server extends KoaRouter {
     associate: 'server',
     property: 'ctx',
   }
-  
+
+  static inject = {
+    logger: { required: false },
+  }
+
   public _http: HTTPServer
   public _ws: WebSocketServer
   public wsStack: WebSocketLayer[] = []
@@ -75,7 +70,6 @@ export class Server extends KoaRouter {
 
   constructor(protected ctx: Context, public config: Server.Config) {
     super()
-    ctx.runtime.name = 'server'
     ctx.provide('server')
     ctx.alias('server', ['router'])
 
@@ -102,8 +96,6 @@ export class Server extends KoaRouter {
       socket.close()
     })
 
-    ctx.decline(['selfUrl', 'host', 'port', 'maxPort'])
-
     if (config.selfUrl) {
       config.selfUrl = trimSlash(config.selfUrl)
     }
@@ -114,23 +106,23 @@ export class Server extends KoaRouter {
       this.host = host
       this.port = await listen(config)
       this._http.listen(this.port, host)
-      this.ctx.logger.info('server listening at %c', `http://${host}:${this.port}`)
+      this.ctx.logger?.info('server listening at %c', `http://${host}:${this.port}`)
       ctx.emit(this, 'server/ready')
     }, true)
 
     ctx.on('dispose', () => {
       if (config.port) {
-        this.ctx.logger.info('server closing')
+        this.ctx.logger?.info('server closing')
       }
       this._ws?.close()
       this._http?.close()
     })
 
-    const self = Context.associate(this, 'server')
+    const self = this
     ctx.set('server', self)
     ctx.on('internal/listener', function (name: string, listener: Function) {
       if (name !== 'server/ready' || !self[Context.filter](this) || !self.port) return
-      this.scope.ensure(async () => listener())
+      listener()
       return () => false
     })
 
@@ -184,11 +176,11 @@ export namespace Server {
     selfUrl?: string
   }
 
-  export const Config: Schema<Config> = Schema.object({
-    host: Schema.string().default('127.0.0.1').description('要监听的 IP 地址。如果将此设置为 `0.0.0.0` 将监听所有地址，包括局域网和公网地址。'),
-    port: Schema.natural().max(65535).description('要监听的初始端口号。'),
-    maxPort: Schema.natural().max(65535).description('允许监听的最大端口号。'),
-    selfUrl: Schema.string().role('link').description('应用暴露在公网的地址。'),
+  export const Config: z<Config> = z.object({
+    host: z.string().default('127.0.0.1').description('要监听的 IP 地址。如果将此设置为 `0.0.0.0` 将监听所有地址，包括局域网和公网地址。'),
+    port: z.natural().max(65535).description('要监听的初始端口号。'),
+    maxPort: z.natural().max(65535).description('允许监听的最大端口号。'),
+    selfUrl: z.string().role('link').description('应用暴露在公网的地址。'),
   })
 }
 

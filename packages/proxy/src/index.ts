@@ -23,7 +23,7 @@ class ProxyServer extends Service {
   public path: string
 
   constructor(protected ctx: Context, public config: ProxyServer.Config) {
-    super(ctx, 'server.proxy', true)
+    super(ctx, 'server.proxy')
 
     const logger = ctx.logger('proxy')
 

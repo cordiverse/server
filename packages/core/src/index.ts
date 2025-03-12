@@ -1,11 +1,9 @@
-import { Context, Service, z } from 'cordis'
-import { defineProperty, Dict, remove, trimSlash } from 'cosmokit'
+import { Context, DisposableList, Service, z } from 'cordis'
+import { defineProperty, Dict, trimSlash } from 'cosmokit'
 import * as http from 'node:http'
 import { Keys, pathToRegexp } from 'path-to-regexp'
 import { WebSocket, WebSocketServer } from 'ws'
 import { listen, ListenOptions } from './listen'
-
-export {} from 'koa-body'
 
 declare module 'cordis' {
   interface Context {
@@ -14,7 +12,8 @@ declare module 'cordis' {
 
   interface Events {
     'server/ready'(this: Server): void
-    'server/request'(this: Server, request: Server.Request, response: Server.Response, next: () => Promise<void>): Promise<void>
+    'server/request'(this: Server, req: Server.Request, res: Server.Response, next: () => Promise<void>): Promise<void>
+    'server/request/route'(this: Server, req: Server.Request, res: Server.Response, next: () => Promise<void>): Promise<void>
   }
 }
 
@@ -64,48 +63,93 @@ export type ExtractParams<S extends string, O extends {} = {}, A extends 0[] = [
           : ExtractParams<S, O, A>
   : O
 
-type WebSocketCallback<P> = (socket: WebSocket, request: Server.Request<P>) => void
-
-export class WebSocketLayer<P = never> {
-  clients = new Set<WebSocket>()
+export abstract class Route {
   regexp: RegExp
   keys: Keys
 
-  constructor(private server: Server, path: string, public callback?: WebSocketCallback<P>) {
-    const { regexp, keys } = pathToRegexp(path)
-    this.regexp = regexp
-    this.keys = keys
+  constructor(protected server: Server, public path: string | RegExp) {
+    if (typeof path === 'string') {
+      const { regexp, keys } = pathToRegexp(path)
+      this.regexp = regexp
+      this.keys = keys
+    } else {
+      this.regexp = path
+      this.keys = []
+    }
   }
 
-  _accept(socket: WebSocket, request: Server.Request<P>) {
-    const capture = this.regexp.exec(request.url!)
+  check(req: Server.Request) {
+    const capture = this.regexp.exec(req.url!)
     if (!capture) return
     const params: Dict<string> = {}
     this.keys.forEach(({ name }, index) => {
-      params[name] = capture[index + 1]
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/decodeURIComponent#decoding_query_parameters_from_a_url
+      params[name] = decodeURIComponent(capture[index + 1].replace(/\+/g, ' '))
     })
+    return params
+  }
+}
+
+type WsCallback<P = any> = (socket: WebSocket, req: Server.Request & { params: P }) => void
+
+export class WsRoute extends Route {
+  clients = new Set<WebSocket>()
+  dispose: () => Promise<void>
+
+  constructor(server: Server, path: string | RegExp, public callback?: WsCallback) {
+    super(server, path)
+    const self = this
+    this.dispose = server.ctx.effect(function* () {
+      yield server.wsRoutes.push(self)
+      yield () => {
+        for (const socket of self.clients) {
+          socket.close()
+        }
+      }
+    })
+  }
+
+  _accept(socket: WebSocket, req: Server.Request) {
+    const params = this.check(req)
+    if (!params) return false
     this.clients.add(socket)
     socket.addEventListener('close', () => {
       this.clients.delete(socket)
     })
     if (this.callback) {
-      request = Object.create(request)
-      request.params = params as P
-      this.callback?.(socket, request)
+      this.callback(socket, Object.assign(Object.create(req), { params }))
     }
     return true
   }
-
-  close() {
-    remove(this.server.wsStack, this)
-    for (const socket of this.clients) {
-      socket.close()
-    }
-  }
 }
 
+export type Middleware<P = any> = (req: Server.Request & { params: P }, res: Server.Response, next: () => Promise<void>) => Promise<void>
+
 interface Server {
-  get(path: string)
+  all<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  get<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  delete<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  head<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  post<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  put<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  patch<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
+}
+
+class HttpRoute extends Route {
+  dispose: () => Promise<void>
+
+  constructor(server: Server, public method: Server.Method | undefined, path: string | RegExp, public callback: Middleware) {
+    super(server, path)
+    const self = this
+    this.dispose = server.ctx.effect(function* () {
+      yield server.httpRoutes.push(self)
+      yield server.ctx.on('server/request/route', async (req, res, next) => {
+        const params = self.check(req)
+        if (!params) return next()
+        return callback(Object.assign(Object.create(req), { params }), res, next)
+      })
+    })
+  }
 }
 
 class Server extends Service {
@@ -115,23 +159,50 @@ class Server extends Service {
 
   public _http: http.Server
   public _ws: WebSocketServer
-  public wsStack: WebSocketLayer[] = []
+  public httpRoutes = new DisposableList<HttpRoute>()
+  public wsRoutes = new DisposableList<WsRoute>()
 
   public host!: string
   public port!: number
 
-  constructor(protected ctx: Context, public config: Server.Config) {
+  constructor(public ctx: Context, public config: Server.Config) {
     super(ctx, 'server')
 
     this._http = http.createServer()
 
-    this._http.on('request', async (req, res) => {
+    this._http.on('request', async (req: Server.Request, res: Server.Response) => {
       defineProperty(req, Service.tracker, { associate: 'server.request' })
       defineProperty(res, Service.tracker, { associate: 'server.response' })
       this.ctx.logger('server:request')?.debug('%c %s', req.method, req.url)
-      await this.ctx.waterfall(this, 'server/request', req as any, res as any, async () => {})
       res.on('finish', () => {
         this.ctx.logger('server:response')?.debug('%c %s %s', req.method, req.url, res.statusCode)
+      })
+      await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
+      res.end()
+    })
+
+    this.ctx.on('server/request', async (req, res, next) => {
+      return this.ctx.waterfall(this, 'server/request/route', req, res, async () => {
+        const methods = new Set<Server.Method>()
+        let asterisk = false
+        for (const route of this.httpRoutes) {
+          if (!route.check(req)) continue
+          if (route.method) {
+            methods.add(route.method)
+          } else {
+            asterisk = true
+            break
+          }
+        }
+        if (!methods.size && !asterisk) {
+          res.statusCode = 404
+        } else if (req.method === 'OPTIONS') {
+          res.statusCode = 204
+          res.setHeader('Allow', asterisk ? '*' : [...methods].join(', '))
+        } else {
+          res.statusCode = 405
+        }
+        return next()
       })
     })
 
@@ -139,16 +210,25 @@ class Server extends Service {
       server: this._http,
     })
 
-    this._ws.on('connection', (socket, request: Server.Request) => {
-      defineProperty(request, Service.tracker, { associate: 'server.request' })
-      for (const layer of this.wsStack) {
-        if (layer._accept(socket, request)) return
+    this._ws.on('connection', (socket, req: Server.Request) => {
+      defineProperty(req, Service.tracker, { associate: 'server.request' })
+      for (const route of this.wsRoutes) {
+        if (route._accept(socket, req)) return
       }
       socket.close()
     })
 
     if (config.selfUrl) {
       config.selfUrl = trimSlash(config.selfUrl)
+    }
+  }
+
+  static {
+    const methods = ['all', 'get', 'delete', 'head', 'post', 'put', 'patch'] as const
+    for (const method of methods) {
+      defineProperty(Server.prototype, method, function (this: Server, path, middleware) {
+        return new HttpRoute(this, method === 'all' ? undefined : method.toUpperCase() as Server.Method, path, middleware)
+      })
     }
   }
 
@@ -180,18 +260,15 @@ class Server extends Service {
     }
   }
 
-  ws<P extends string>(path: P, callback?: WebSocketCallback<ExtractParams<P>>) {
-    const layer = new WebSocketLayer<ExtractParams<P>>(this, path, callback)
-    this.wsStack.push(layer)
-    this.ctx.scope.disposables.push(() => layer.close())
-    return layer
+  ws<P extends string>(path: P | RegExp, callback?: WsCallback<ExtractParams<P>>) {
+    return new WsRoute(this, path, callback)
   }
 }
 
 namespace Server {
-  export interface Request<P = never> extends http.IncomingMessage {
-    params: P
-  }
+  export type Method = 'GET' | 'DELETE' | 'HEAD' | 'POST' | 'PUT' | 'PATCH'
+
+  export interface Request extends http.IncomingMessage {}
 
   export interface Response extends http.ServerResponse {}
 

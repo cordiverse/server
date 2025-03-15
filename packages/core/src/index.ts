@@ -4,6 +4,9 @@ import * as http from 'node:http'
 import { Keys, pathToRegexp } from 'path-to-regexp'
 import { WebSocket, WebSocketServer } from 'ws'
 import { listen, ListenOptions } from './listen'
+import { Request, Response } from './body'
+
+export * from './body'
 
 declare module 'cordis' {
   interface Context {
@@ -12,8 +15,8 @@ declare module 'cordis' {
 
   interface Events {
     'server/ready'(this: Server): void
-    'server/request'(this: Server, req: Server.Request, res: Server.Response, next: () => Promise<void>): Promise<void>
-    'server/request/route'(this: Server, req: Server.Request, res: Server.Response, next: () => Promise<void>): Promise<void>
+    'server/request'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
+    'server/request/route'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
   }
 }
 
@@ -78,7 +81,7 @@ export abstract class Route {
     }
   }
 
-  check(req: Server.Request) {
+  check(req: Request) {
     const capture = this.regexp.exec(req.url!)
     if (!capture) return
     const params: Dict<string> = {}
@@ -90,7 +93,7 @@ export abstract class Route {
   }
 }
 
-type WsCallback<P = any> = (socket: WebSocket, req: Server.Request & { params: P }) => void
+type WsCallback<P = any> = (socket: WebSocket, req: Request & { params: P }) => void
 
 export class WsRoute extends Route {
   clients = new Set<WebSocket>()
@@ -109,7 +112,7 @@ export class WsRoute extends Route {
     })
   }
 
-  _accept(socket: WebSocket, req: Server.Request) {
+  _accept(socket: WebSocket, req: Request) {
     const params = this.check(req)
     if (!params) return false
     this.clients.add(socket)
@@ -123,7 +126,7 @@ export class WsRoute extends Route {
   }
 }
 
-export type Middleware<P = any> = (req: Server.Request & { params: P }, res: Server.Response, next: () => Promise<void>) => Promise<void>
+export type Middleware<P = any> = (req: Request & { params: P }, res: Response, next: () => Promise<void>) => Promise<void>
 
 interface Server {
   all<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
@@ -170,15 +173,15 @@ class Server extends Service {
 
     this._http = http.createServer()
 
-    this._http.on('request', async (req: Server.Request, res: Server.Response) => {
-      defineProperty(req, Service.tracker, { associate: 'server.request' })
-      defineProperty(res, Service.tracker, { associate: 'server.response' })
+    this._http.on('request', async (_req, _res) => {
+      const req = new Request(_req)
+      const res = new Response(_res)
       this.ctx.logger('server:request')?.debug('%c %s', req.method, req.url)
-      res.on('finish', () => {
-        this.ctx.logger('server:response')?.debug('%c %s %s', req.method, req.url, res.statusCode)
+      res.inner.on('finish', () => {
+        this.ctx.logger('server:response')?.debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
       })
       await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
-      res.end()
+      res._end()
     })
 
     this.ctx.on('server/request', async (req, res, next) => {
@@ -195,12 +198,12 @@ class Server extends Service {
           }
         }
         if (!methods.size && !asterisk) {
-          res.statusCode = 404
+          res.status = 404
         } else if (req.method === 'OPTIONS') {
-          res.statusCode = 204
-          res.setHeader('Allow', asterisk ? '*' : [...methods].join(', '))
+          res.status = 204
+          res.headers.set('allow', asterisk ? '*' : [...methods].join(', '))
         } else {
-          res.statusCode = 405
+          res.status = 405
         }
         return next()
       })
@@ -210,8 +213,8 @@ class Server extends Service {
       server: this._http,
     })
 
-    this._ws.on('connection', (socket, req: Server.Request) => {
-      defineProperty(req, Service.tracker, { associate: 'server.request' })
+    this._ws.on('connection', (socket, _req) => {
+      const req = new Request(_req)
       for (const route of this.wsRoutes) {
         if (route._accept(socket, req)) return
       }
@@ -242,10 +245,18 @@ class Server extends Service {
 
   async stop() {
     if (this.port) {
-      this.ctx.logger?.info('server closing')
+      this.ctx.logger?.info(`server closing at %c`, `http://${this.host}:${this.port}`)
     }
-    this._ws?.close()
-    this._http?.close()
+    await new Promise<void>((resolve, reject) => {
+      this._ws?.close((err) => {
+        err ? reject(err) : resolve()
+      })
+    })
+    await new Promise<void>((resolve, reject) => {
+      this._http?.close((err) => {
+        err ? reject(err) : resolve()
+      })
+    })
   }
 
   get selfUrl() {
@@ -267,10 +278,6 @@ class Server extends Service {
 
 namespace Server {
   export type Method = 'GET' | 'DELETE' | 'HEAD' | 'POST' | 'PUT' | 'PATCH'
-
-  export interface Request extends http.IncomingMessage {}
-
-  export interface Response extends http.ServerResponse {}
 
   export interface Config extends ListenOptions {
     host: string

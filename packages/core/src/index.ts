@@ -68,42 +68,44 @@ export type ExtractParams<S extends string, O extends {} = {}, A extends 0[] = [
 
 export abstract class Route {
   regexp: RegExp
-  keys: Keys
+  keys?: Keys
 
   constructor(protected server: Server, label: string, public path: string | RegExp) {
-    server.ctx.logger('server:route')?.debug('register %s %s', label, path)
+    server.ctx.logger?.('server:route').debug('register %s %s', label, path)
     if (typeof path === 'string') {
       const { regexp, keys } = pathToRegexp(path)
       this.regexp = regexp
       this.keys = keys
     } else {
       this.regexp = path
-      this.keys = []
     }
   }
 
   check(req: Request) {
     const capture = this.regexp.exec(req.url!)
     if (!capture) return
-    const params: Dict<string> = {}
-    this.keys.forEach(({ name }, index) => {
-      if (capture[index + 1] === undefined) return
-      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/decodeURIComponent#decoding_query_parameters_from_a_url
-      params[name] = decodeURIComponent(capture[index + 1].replace(/\+/g, ' '))
-    })
-    this.server.ctx.logger('server:route')?.debug('match %s with params', this.path, params)
+    let params: any
+    if (this.keys) {
+      params = {}
+      this.keys.forEach(({ name }, index) => {
+        if (capture[index + 1] === undefined) return
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/decodeURIComponent#decoding_query_parameters_from_a_url
+        params[name] = decodeURIComponent(capture[index + 1].replace(/\+/g, ' '))
+      })
+    } else {
+      params = capture
+    }
+    this.server.ctx.logger?.('server:route').debug('match %s with params', this.path, params)
     return params
   }
 }
 
-type WsCallback<P = any> = (socket: WebSocket, req: Request & { params: P }) => void
+type WsHandler<P = any> = (req: Request & { params: P }, next: () => Promise<WebSocket>) => Promise<void>
 
 export class WsRoute extends Route {
   clients = new Set<WebSocket>()
   dispose: () => Promise<void>
 
-  constructor(server: Server, path: string | RegExp, public callback?: WsCallback) {
-    super(server, path)
   constructor(server: Server, path: string | RegExp, public handle?: WsHandler) {
     super(server, 'WS', path)
     const self = this
@@ -116,32 +118,9 @@ export class WsRoute extends Route {
       }
     })
   }
-
-  _accept(socket: WebSocket, req: Request) {
-    const params = this.check(req)
-    if (!params) return false
-    this.clients.add(socket)
-    socket.addEventListener('close', () => {
-      this.clients.delete(socket)
-    })
-    if (this.callback) {
-      this.callback(socket, Object.assign(Object.create(req), { params }))
-    }
-    return true
-  }
 }
 
 export type Middleware<P = any> = (req: Request & { params: P }, res: Response, next: () => Promise<globalThis.Response | void>) => Promise<globalThis.Response | void>
-
-interface Server {
-  all<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  get<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  delete<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  head<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  post<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  put<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  patch<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
-}
 
 class HttpRoute extends Route {
   dispose: () => Promise<void>
@@ -161,9 +140,27 @@ class HttpRoute extends Route {
   }
 }
 
+interface RouteImpl {
+  <P extends string>(path: P, middleware: Middleware<ExtractParams<P>>): HttpRoute
+  (path: RegExp, middleware: Middleware<RegExpExecArray>): HttpRoute
+  (path: string | RegExp, middleware: Middleware): HttpRoute
+}
+
+interface Server extends Record<typeof Server.methods[number], RouteImpl> {}
+
 class Server extends Service {
-  static inject = {
+  static readonly inject = {
     logger: { required: false },
+  }
+
+  static readonly methods = ['all', 'get', 'delete', 'head', 'post', 'put', 'patch'] as const
+
+  static {
+    for (const method of Server.methods) {
+      defineProperty(Server.prototype, method, function (this: Server, path: string | RegExp, middleware: Middleware) {
+        return new HttpRoute(this, method === 'all' ? undefined : method.toUpperCase() as Server.Method, path, middleware)
+      })
+    }
   }
 
   public _http: http.Server
@@ -182,9 +179,9 @@ class Server extends Service {
     this._http.on('request', async (_req, _res) => {
       const req = new Request(_req)
       const res = new Response(_res)
-      this.ctx.logger('server:request')?.debug('%c %s', req.method, req.url)
+      this.ctx.logger?.('server:request').debug('%c %s', req.method, req.url)
       res.inner.on('finish', () => {
-        this.ctx.logger('server:response')?.debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
+        this.ctx.logger?.('server:response').debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
       })
       await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
       res._end()
@@ -227,25 +224,37 @@ class Server extends Service {
       server: this._http,
     })
 
-    this._ws.on('connection', (socket, _req) => {
+    this._ws.shouldHandle = (_req) => new Promise(async (resolve) => {
       const req = new Request(_req)
-      for (const route of this.wsRoutes) {
-        if (route._accept(socket, req)) return
+      const task = new Promise<WebSocket>((resolve, reject) => {
+        _req['__ws_resolve'] = resolve
+      })
+      const factory = () => {
+        resolve(true)
+        return task
       }
-      socket.close()
+      await Promise.all([...this.wsRoutes].map(async (route) => {
+        const params = route.check(req)
+        if (!params) return
+        if (!route.handle) {
+          await factory()
+          return
+        }
+        try {
+          await route.handle(Object.assign(Object.create(req), { params }), factory)
+        } catch (error) {
+          this.ctx.logger?.error(error)
+        }
+      }))
+      resolve(false)
+    })
+
+    this._ws.on('connection', (socket, req) => {
+      req['__ws_resolve']?.(socket)
     })
 
     if (config.selfUrl) {
       config.selfUrl = trimSlash(config.selfUrl)
-    }
-  }
-
-  static {
-    const methods = ['all', 'get', 'delete', 'head', 'post', 'put', 'patch'] as const
-    for (const method of methods) {
-      defineProperty(Server.prototype, method, function (this: Server, path, middleware) {
-        return new HttpRoute(this, method === 'all' ? undefined : method.toUpperCase() as Server.Method, path, middleware)
-      })
     }
   }
 
@@ -285,7 +294,9 @@ class Server extends Service {
     }
   }
 
-  ws<P extends string>(path: P | RegExp, callback?: WsCallback<ExtractParams<P>>) {
+  ws<P extends string>(path: P, callback?: WsHandler<ExtractParams<P>>): WsRoute
+  ws(path: RegExp, callback?: WsHandler<RegExpExecArray>): WsRoute
+  ws(path: string | RegExp, callback?: WsHandler) {
     return new WsRoute(this, path, callback)
   }
 }

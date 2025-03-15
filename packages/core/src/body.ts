@@ -116,7 +116,10 @@ export class Response {
   }
 
   _end() {
-    if (isNullable(this._body)) return
+    this.inner.writeHead(this.inner.statusCode, this.inner.statusMessage, Object.fromEntries(this.headers))
+    if (isNullable(this._body)) {
+      return this.inner.end()
+    }
     this._bodyUsed = true
     const body = new globalThis.Response(this._body).body! as any
     Readable.fromWeb(body).pipe(this.inner, { end: true })

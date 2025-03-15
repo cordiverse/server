@@ -16,7 +16,7 @@ declare module 'cordis' {
   interface Events {
     'server/ready'(this: Server): void
     'server/request'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
-    'server/request/route'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
+    'server/__route'(this: Server, req: Request, res: Response, next: () => Promise<globalThis.Response | void>): Promise<globalThis.Response | void>
   }
 }
 
@@ -70,7 +70,8 @@ export abstract class Route {
   regexp: RegExp
   keys: Keys
 
-  constructor(protected server: Server, public path: string | RegExp) {
+  constructor(protected server: Server, label: string, public path: string | RegExp) {
+    server.ctx.logger('server:route')?.debug('register %s %s', label, path)
     if (typeof path === 'string') {
       const { regexp, keys } = pathToRegexp(path)
       this.regexp = regexp
@@ -86,9 +87,11 @@ export abstract class Route {
     if (!capture) return
     const params: Dict<string> = {}
     this.keys.forEach(({ name }, index) => {
+      if (capture[index + 1] === undefined) return
       // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/decodeURIComponent#decoding_query_parameters_from_a_url
       params[name] = decodeURIComponent(capture[index + 1].replace(/\+/g, ' '))
     })
+    this.server.ctx.logger('server:route')?.debug('match %s with params', this.path, params)
     return params
   }
 }
@@ -101,6 +104,8 @@ export class WsRoute extends Route {
 
   constructor(server: Server, path: string | RegExp, public callback?: WsCallback) {
     super(server, path)
+  constructor(server: Server, path: string | RegExp, public handle?: WsHandler) {
+    super(server, 'WS', path)
     const self = this
     this.dispose = server.ctx.effect(function* () {
       yield server.wsRoutes.push(self)
@@ -126,7 +131,7 @@ export class WsRoute extends Route {
   }
 }
 
-export type Middleware<P = any> = (req: Request & { params: P }, res: Response, next: () => Promise<void>) => Promise<void>
+export type Middleware<P = any> = (req: Request & { params: P }, res: Response, next: () => Promise<globalThis.Response | void>) => Promise<globalThis.Response | void>
 
 interface Server {
   all<P extends string>(path: P | RegExp, middleware: Middleware<ExtractParams<P>>): HttpRoute
@@ -142,11 +147,12 @@ class HttpRoute extends Route {
   dispose: () => Promise<void>
 
   constructor(server: Server, public method: Server.Method | undefined, path: string | RegExp, public callback: Middleware) {
-    super(server, path)
+    super(server, method ?? 'ALL', path)
     const self = this
     this.dispose = server.ctx.effect(function* () {
       yield server.httpRoutes.push(self)
-      yield server.ctx.on('server/request/route', async (req, res, next) => {
+      yield server.ctx.on('server/__route', async (req, res, next) => {
+        if (method && req.method !== method) return next()
         const params = self.check(req)
         if (!params) return next()
         return callback(Object.assign(Object.create(req), { params }), res, next)
@@ -185,7 +191,7 @@ class Server extends Service {
     })
 
     this.ctx.on('server/request', async (req, res, next) => {
-      return this.ctx.waterfall(this, 'server/request/route', req, res, async () => {
+      const response = await this.ctx.waterfall(this, 'server/__route', req, res, async () => {
         const methods = new Set<Server.Method>()
         let asterisk = false
         for (const route of this.httpRoutes) {
@@ -207,6 +213,14 @@ class Server extends Service {
         }
         return next()
       })
+
+      if (response) {
+        res.body = response.body
+        res.status = response.status
+        for (const [key, value] of response.headers) {
+          res.headers.set(key, value)
+        }
+      }
     })
 
     this._ws = new WebSocketServer({

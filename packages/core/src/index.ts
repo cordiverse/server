@@ -180,7 +180,7 @@ class Server extends Service {
       const req = new Request(_req)
       const res = new Response(_res)
       this.ctx.logger?.('server:request').debug('%c %s', req.method, req.url)
-      res.inner.on('finish', () => {
+      res._res.on('finish', () => {
         this.ctx.logger?.('server:response').debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
       })
       await this.ctx.waterfall(this, 'server/request', req, res, async () => {})

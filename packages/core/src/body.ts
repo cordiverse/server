@@ -2,20 +2,22 @@ import { Service } from 'cordis'
 import { defineProperty, isNullable } from 'cosmokit'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
+import accepts from 'accepts'
 
 export class Request implements Body {
   readonly url: string
   readonly method: string
   readonly headers: Headers
 
+  private _accepts?: accepts.Accepts
   private _bodyImpl: globalThis.Response
 
-  constructor(public inner: IncomingMessage) {
+  constructor(public _req: IncomingMessage) {
     defineProperty(this, Service.tracker, { associate: 'server.request' })
-    this.url = inner.url!
-    this.method = inner.method!
+    this.url = _req.url!
+    this.method = _req.method!
     this.headers = new Headers()
-    for (const [key, value] of Object.entries(inner.headers)) {
+    for (const [key, value] of Object.entries(_req.headers)) {
       if (Array.isArray(value)) {
         for (const v of value) {
           this.headers.append(key, v)
@@ -24,9 +26,17 @@ export class Request implements Body {
         this.headers.set(key, value)
       }
     }
-    this._bodyImpl = new globalThis.Response(Readable.toWeb(this.inner) as ReadableStream, {
+    this._bodyImpl = new globalThis.Response(Readable.toWeb(this._req) as ReadableStream, {
       headers: this.headers,
     })
+  }
+
+  accepts(): string[]
+  accepts(types: string[]): string | false
+  accepts(...types: string[]): string | false
+  accepts(...args: any[]) {
+    this._accepts ??= accepts(this._req)
+    return this._accepts.types(...args)
   }
 
   get body() {
@@ -65,49 +75,49 @@ export class Request implements Body {
 export class Response {
   readonly headers = new Headers()
 
-  private _body?: BodyInit | null
+  private _bodyInit?: BodyInit | null
   private _bodyUsed = false
   private _hasStatus = false
 
-  constructor(public inner: ServerResponse) {
+  constructor(public _res: ServerResponse) {
     defineProperty(this, Service.tracker, { associate: 'server.response' })
-    inner.statusCode = 404
+    _res.statusCode = 404
   }
 
   get status() {
-    return this.inner.statusCode
+    return this._res.statusCode
   }
 
   set status(value) {
-    this.inner.statusCode = value
+    this._res.statusCode = value
     this._hasStatus = true
   }
 
   get statusText() {
-    return this.inner.statusMessage
+    return this._res.statusMessage
   }
 
   set statusText(value) {
-    this.inner.statusMessage = value
+    this._res.statusMessage = value
   }
 
   get ok() {
-    return this.inner.statusCode >= 200 && this.inner.statusCode < 300
+    return this._res.statusCode >= 200 && this._res.statusCode < 300
   }
 
   get redirected() {
-    return this.inner.statusCode >= 300 && this.inner.statusCode < 400
+    return this._res.statusCode >= 300 && this._res.statusCode < 400
   }
 
   get body() {
-    return this._body
+    return this._bodyInit
   }
 
   set body(value: BodyInit | null | undefined) {
     if (this._bodyUsed) throw new TypeError('Body already used')
-    this._body = value
+    this._bodyInit = value
     if (!isNullable(value) && !this._hasStatus) {
-      this.inner.statusCode = 200
+      this._res.statusCode = 200
     }
   }
 
@@ -116,12 +126,12 @@ export class Response {
   }
 
   _end() {
-    this.inner.writeHead(this.inner.statusCode, this.inner.statusMessage, Object.fromEntries(this.headers))
-    if (isNullable(this._body)) {
-      return this.inner.end()
+    this._res.writeHead(this._res.statusCode, this._res.statusMessage, Object.fromEntries(this.headers))
+    if (isNullable(this._bodyInit)) {
+      return this._res.end()
     }
     this._bodyUsed = true
-    const body = new globalThis.Response(this._body).body! as any
-    Readable.fromWeb(body).pipe(this.inner, { end: true })
+    const body = new globalThis.Response(this._bodyInit).body! as any
+    Readable.fromWeb(body).pipe(this._res, { end: true })
   }
 }

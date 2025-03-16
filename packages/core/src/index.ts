@@ -180,7 +180,7 @@ class Server extends Service {
       const req = new Request(_req)
       const res = new Response(_res)
       this.ctx.logger?.('server:request').debug('%c %s', req.method, req.url)
-      res._res.on('finish', () => {
+      _res.on('finish', () => {
         this.ctx.logger?.('server:response').debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
       })
       await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
@@ -292,6 +292,10 @@ class Server extends Service {
     } else {
       return `http://${host}:${this.port}`
     }
+  }
+
+  use(middleware: (req: Request, res: Response, next: () => Promise<void>) => Promise<void>) {
+    return this.ctx.on('server/request', middleware, { prepend: true })
   }
 
   ws<P extends string>(path: P, callback?: WsHandler<ExtractParams<P>>): WsRoute

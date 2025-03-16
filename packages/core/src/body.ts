@@ -79,6 +79,8 @@ export class Response {
   private _bodyUsed = false
   private _hasStatus = false
 
+  legacyMode = false
+
   constructor(public _res: ServerResponse) {
     defineProperty(this, Service.tracker, { associate: 'server.response' })
     _res.statusCode = 404
@@ -126,6 +128,7 @@ export class Response {
   }
 
   _end() {
+    if (this.legacyMode) return
     this._res.writeHead(this._res.statusCode, this._res.statusMessage, Object.fromEntries(this.headers))
     if (isNullable(this._bodyInit)) {
       return this._res.end()

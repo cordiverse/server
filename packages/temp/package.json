@@ -28,12 +28,12 @@
     "plugin"
   ],
   "devDependencies": {
-    "@cordisjs/plugin-http": "^1.0.0-alpha.4",
-    "@cordisjs/plugin-server": "^1.0.0",
+    "@cordisjs/plugin-http": "^1.0.0",
+    "@cordisjs/plugin-server": "^1.0.1",
     "cordis": "^4.0.0-alpha.5"
   },
   "peerDependencies": {
-    "@cordisjs/plugin-server": "^1.0.0",
+    "@cordisjs/plugin-server": "^1.0.1",
     "cordis": "^4.0.0-alpha.5"
   },
   "dependencies": {

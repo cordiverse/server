@@ -1,5 +1,5 @@
 import { Context, DisposableList, Service, z } from 'cordis'
-import { defineProperty, Dict, trimSlash } from 'cosmokit'
+import { defineProperty, Dict, isNullable, trimSlash } from 'cosmokit'
 import * as http from 'node:http'
 import { Keys, pathToRegexp } from 'path-to-regexp'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -188,35 +188,34 @@ class Server extends Service {
     })
 
     this.ctx.on('server/request', async (req, res, next) => {
-      const response = await this.ctx.waterfall(this, 'server/__route', req, res, async () => {
-        const methods = new Set<Server.Method>()
-        let asterisk = false
-        for (const route of this.httpRoutes) {
-          if (!route.check(req)) continue
-          if (route.method) {
-            methods.add(route.method)
-          } else {
-            asterisk = true
-            break
-          }
-        }
-        if (!methods.size && !asterisk) {
-          res.status = 404
-        } else if (req.method === 'OPTIONS') {
-          res.status = 204
-          res.headers.set('allow', asterisk ? '*' : [...methods].join(', '))
-        } else {
-          res.status = 405
-        }
-        return next()
-      })
-
+      const response = await this.ctx.waterfall(this, 'server/__route', req, res, next)
       if (response) {
         res.body = response.body
         res.status = response.status
         for (const [key, value] of response.headers) {
           res.headers.set(key, value)
         }
+      }
+
+      if (!isNullable(res.body)) return
+      const methods = new Set<Server.Method>()
+      let asterisk = false
+      for (const route of this.httpRoutes) {
+        if (!route.check(req)) continue
+        if (route.method) {
+          methods.add(route.method)
+        } else {
+          asterisk = true
+          break
+        }
+      }
+      if (!methods.size && !asterisk) {
+        res.status = 404
+      } else if (req.method === 'OPTIONS') {
+        res.status = 204
+        res.headers.set('allow', asterisk ? '*' : [...methods].join(', '))
+      } else {
+        res.status = 405
       }
     })
 

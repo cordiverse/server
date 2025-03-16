@@ -29,12 +29,12 @@
   ],
   "devDependencies": {
     "@cordisjs/plugin-http": "^1.0.0",
-    "@cordisjs/plugin-server": "^1.0.1",
-    "cordis": "^4.0.0-alpha.5"
+    "@cordisjs/plugin-server": "^1.0.2",
+    "cordis": "^4.0.0-alpha.6"
   },
   "peerDependencies": {
-    "@cordisjs/plugin-server": "^1.0.1",
-    "cordis": "^4.0.0-alpha.5"
+    "@cordisjs/plugin-server": "^1.0.2",
+    "cordis": "^4.0.0-alpha.6"
   },
   "dependencies": {
     "cosmokit": "^1.7.3"

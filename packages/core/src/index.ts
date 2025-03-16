@@ -1,5 +1,5 @@
 import { Context, DisposableList, Service, z } from 'cordis'
-import { defineProperty, Dict, isNullable, trimSlash } from 'cosmokit'
+import { defineProperty, isNullable, trimSlash } from 'cosmokit'
 import * as http from 'node:http'
 import { Keys, pathToRegexp } from 'path-to-regexp'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -116,7 +116,7 @@ export class WsRoute extends Route {
           socket.close()
         }
       }
-    })
+    }, `ctx.server.ws(${typeof path === 'string' ? JSON.stringify(path) : path})`)
   }
 }
 
@@ -125,18 +125,18 @@ export type Middleware<P = any> = (req: Request & { params: P }, res: Response, 
 class HttpRoute extends Route {
   dispose: () => Promise<void>
 
-  constructor(server: Server, public method: Server.Method | undefined, path: string | RegExp, public callback: Middleware) {
-    super(server, method ?? 'ALL', path)
+  constructor(server: Server, public method: string, path: string | RegExp, public callback: Middleware) {
+    super(server, method, path)
     const self = this
     this.dispose = server.ctx.effect(function* () {
       yield server.httpRoutes.push(self)
       yield server.ctx.on('server/__route', async (req, res, next) => {
-        if (method && req.method !== method) return next()
+        if (method !== 'all' && req.method.toLowerCase() !== method) return next()
         const params = self.check(req)
         if (!params) return next()
         return callback(Object.assign(Object.create(req), { params }), res, next)
       })
-    })
+    }, `ctx.server.${method}(${typeof path === 'string' ? JSON.stringify(path) : path})`)
   }
 }
 
@@ -158,7 +158,7 @@ class Server extends Service {
   static {
     for (const method of Server.methods) {
       defineProperty(Server.prototype, method, function (this: Server, path: string | RegExp, middleware: Middleware) {
-        return new HttpRoute(this, method === 'all' ? undefined : method.toUpperCase() as Server.Method, path, middleware)
+        return new HttpRoute(this, method, path, middleware)
       })
     }
   }
@@ -198,7 +198,7 @@ class Server extends Service {
       }
 
       if (!isNullable(res.body)) return
-      const methods = new Set<Server.Method>()
+      const methods = new Set<string>()
       let asterisk = false
       for (const route of this.httpRoutes) {
         if (!route.check(req)) continue
@@ -305,8 +305,6 @@ class Server extends Service {
 }
 
 namespace Server {
-  export type Method = 'GET' | 'DELETE' | 'HEAD' | 'POST' | 'PUT' | 'PATCH'
-
   export interface Config extends ListenOptions {
     host: string
     port: number

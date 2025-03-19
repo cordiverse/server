@@ -44,26 +44,28 @@ type TakeIdent<S extends string> =
 
 // path-to-regexp v8 syntax
 export type ExtractParams<S extends string, O extends {} = {}, A extends 0[] = []> =
-  | S extends `${infer C}${infer S}`
-  ? C extends '\\'
-    ? S extends `${string}${infer S}`
+  | string extends S
+  ? any
+  : S extends `${infer C}${infer S}`
+  ? | C extends '\\'
+    ? | S extends `${string}${infer S}`
       ? ExtractParams<S, O, A>
       : O
     : C extends ':' | '*'
-      ? TakeIdent<S> extends [infer P extends string, infer S extends string]
-        ? ExtractParams<S, O & (
-          | A['length'] extends 0
-          ? { [K in P]: string }
-          : { [K in P]?: string }
-        ), A>
-        : never
-      : C extends '{'
-        ? ExtractParams<S, O, [0, ...A]>
-        : C extends '}'
-          ? A extends [0, ...infer A extends 0[]]
-            ? ExtractParams<S, O, A>
-            : ExtractParams<S, O, A>
-          : ExtractParams<S, O, A>
+    ? | TakeIdent<S> extends [infer P extends string, infer S extends string]
+      ? ExtractParams<S, O & (
+        | A['length'] extends 0
+        ? { [K in P]: string }
+        : { [K in P]?: string }
+      ), A>
+      : never
+    : C extends '{'
+    ? ExtractParams<S, O, [0, ...A]>
+    : C extends '}'
+    ? | A extends [0, ...infer A extends 0[]]
+      ? ExtractParams<S, O, A>
+      : ExtractParams<S, O, A>
+    : ExtractParams<S, O, A>
   : O
 
 export abstract class Route {

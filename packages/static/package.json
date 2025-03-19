@@ -1,7 +1,8 @@
 {
-  "name": "@cordisjs/plugin-server-temp",
-  "description": "Temp server plugin for cordis",
-  "version": "0.5.0",
+  "name": "@cordisjs/plugin-server-static",
+  "description": "Static server plugin for cordis",
+  "version": "1.0.0",
+  "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -12,31 +13,31 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cordisjs/server.git",
-    "directory": "packages/temp"
+    "directory": "packages/static"
   },
   "bugs": {
     "url": "https://github.com/cordisjs/server/issues"
   },
-  "homepage": "https://github.com/cordisjs/server/tree/main/packages/temp",
+  "homepage": "https://github.com/cordisjs/server/tree/main/packages/static",
   "keywords": [
     "cordis",
     "router",
     "http",
-    "temporary",
+    "static",
+    "public",
     "server",
     "service",
     "plugin"
   ],
-  "devDependencies": {
-    "@cordisjs/plugin-http": "^1.0.1",
-    "@cordisjs/plugin-server": "^1.0.3",
+  "peerDependencies": {
+    "@cordisjs/plugin-server": "^1.0.4",
     "cordis": "^4.0.0-alpha.7"
   },
-  "peerDependencies": {
-    "@cordisjs/plugin-server": "^1.0.3",
+  "devDependencies": {
+    "@cordisjs/plugin-server": "^1.0.4",
     "cordis": "^4.0.0-alpha.7"
   },
   "dependencies": {
-    "cosmokit": "^1.7.4"
+    "@cordisjs/fetch-file": "^1.0.1"
   }
 }

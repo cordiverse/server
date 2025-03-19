@@ -38,6 +38,6 @@
     "cordis": "^4.0.0-alpha.7"
   },
   "dependencies": {
-    "@cordisjs/fetch-file": "^1.0.1"
+    "@cordisjs/fetch-file": "^1.0.2"
   }
 }

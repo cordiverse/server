@@ -10,6 +10,8 @@ export interface Config {
   root: string
   download?: boolean
   fallthrough?: boolean
+  index: string
+  redirect: boolean
   extensions: string[]
   errorPages: Dict<string>
 }
@@ -19,6 +21,8 @@ export const Config: z<Config> = z.object({
   root: z.string().required(),
   download: z.boolean(),
   fallthrough: z.boolean(),
+  index: z.string().default('index'),
+  redirect: z.boolean().default(true),
   extensions: z.array(String).default(['.html', '.htm']),
   errorPages: z.dict(String),
 })
@@ -37,12 +41,23 @@ export function apply(ctx: Context, config: Config) {
   }
 
   ctx.server.get(config.path + '{/*path}', async (req, res, next) => {
-    const filename = join(resolve(ctx.baseDir, config.root), req.url.slice(config.path.length))
-    let response = await _fetchFile(filename)
+    let path = req.url.slice(config.path.length)
+    if (path.endsWith('/') && config.index) {
+      path += config.index
+    }
+    const filename = join(resolve(ctx.baseDir, config.root), path)
+    const response = await _fetchFile(filename)
     if (response.ok) return response
     for (const ext of config.extensions) {
-      response = await _fetchFile(filename + ext)
+      const response = await _fetchFile(filename + ext)
       if (response.ok) return response
+    }
+    if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect) {
+      return new Response(null, {
+        status: 301,
+        statusText: 'Moved Permanently',
+        headers: { Location: req.url + '/' },
+      })
     }
     if (config.fallthrough) return next()
     if (config.errorPages[response.status]) {

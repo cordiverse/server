@@ -1,7 +1,7 @@
 {
   "name": "@cordisjs/plugin-server",
   "description": "Server plugin for cordis",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -30,16 +30,16 @@
     "plugin"
   ],
   "peerDependencies": {
-    "cordis": "^4.0.0-alpha.6"
+    "cordis": "^4.0.0-alpha.7"
   },
   "devDependencies": {
     "@types/accepts": "^1.3.7",
-    "cordis": "^4.0.0-alpha.6"
+    "cordis": "^4.0.0-alpha.7"
   },
   "dependencies": {
     "@types/ws": "^8.5.10",
     "accepts": "^1.3.8",
-    "cosmokit": "^1.7.3",
+    "cosmokit": "^1.7.4",
     "path-to-regexp": "^8.2.0",
     "ws": "^8.16.0"
   }

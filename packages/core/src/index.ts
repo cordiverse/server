@@ -257,28 +257,16 @@ class Server extends Service {
     }
   }
 
-  async start() {
+  async* [Context.init]() {
     this.host = this.config.host
     this.port = await listen(this.config)
     this._http.listen(this.port, this.host)
+    yield () => new Promise<void>((resolve, reject) => {
+      this._http.close((err) => err ? reject(err) : resolve())
+    })
     this.ctx.logger?.info('server listening at %c', `http://${this.host}:${this.port}`)
+    yield () => this.ctx.logger?.info(`server closing at %c`, `http://${this.host}:${this.port}`)
     this.ctx.emit(this, 'server/ready')
-  }
-
-  async stop() {
-    if (this.port) {
-      this.ctx.logger?.info(`server closing at %c`, `http://${this.host}:${this.port}`)
-    }
-    await new Promise<void>((resolve, reject) => {
-      this._ws?.close((err) => {
-        err ? reject(err) : resolve()
-      })
-    })
-    await new Promise<void>((resolve, reject) => {
-      this._http?.close((err) => {
-        err ? reject(err) : resolve()
-      })
-    })
   }
 
   get selfUrl() {

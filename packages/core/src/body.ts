@@ -77,7 +77,6 @@ export class Response {
 
   private _bodyInit?: BodyInit | null
   private _bodyUsed = false
-  private _hasStatus = false
 
   legacyMode = false
 
@@ -92,7 +91,7 @@ export class Response {
 
   set status(value) {
     this._res.statusCode = value
-    this._hasStatus = true
+    this._bodyUsed = true
   }
 
   get statusText() {
@@ -116,10 +115,10 @@ export class Response {
   }
 
   set body(value: BodyInit | null | undefined) {
-    if (this._bodyUsed) throw new TypeError('Body already used')
     this._bodyInit = value
-    if (!isNullable(value) && !this._hasStatus) {
+    if (!isNullable(value) && !this._bodyUsed) {
       this._res.statusCode = 200
+      this._bodyUsed = true
     }
   }
 
@@ -133,7 +132,6 @@ export class Response {
     if (isNullable(this._bodyInit)) {
       return this._res.end()
     }
-    this._bodyUsed = true
     const body = new globalThis.Response(this._bodyInit).body! as any
     Readable.fromWeb(body).pipe(this._res, { end: true })
   }

@@ -30,11 +30,11 @@
     "plugin"
   ],
   "peerDependencies": {
-    "@cordisjs/plugin-server": "^1.0.4",
+    "@cordisjs/plugin-server": "^1.1.0",
     "cordis": "^4.0.0-alpha.7"
   },
   "devDependencies": {
-    "@cordisjs/plugin-server": "^1.0.4",
+    "@cordisjs/plugin-server": "^1.1.0",
     "cordis": "^4.0.0-alpha.7"
   },
   "dependencies": {

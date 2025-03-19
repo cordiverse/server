@@ -2,6 +2,7 @@ import { Context, z } from 'cordis'
 import fetchFile from '@cordisjs/fetch-file'
 import {} from '@cordisjs/plugin-server'
 import { pathToFileURL } from 'node:url'
+import { join } from 'node:path'
 
 export interface Config {
   path: string
@@ -22,7 +23,7 @@ export const inject = {
 
 export function apply(ctx: Context, config: Config) {
   ctx.server.get(config.path + '{/*path}', async (req, res, next) => {
-    return fetchFile(pathToFileURL(config.root + req.url.slice(config.path.length)), {}, {
+    return fetchFile(pathToFileURL(join(ctx.baseDir, config.root, req.url.slice(config.path.length))), {}, {
       download: config.download,
       onError: ctx.logger?.warn,
     })

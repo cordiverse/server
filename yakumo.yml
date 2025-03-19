@@ -9,3 +9,5 @@
   name: yakumo-esbuild
 - id: ep025k
   name: yakumo-tsc
+- id: 1j7z7k
+  name: yakumo-mocha

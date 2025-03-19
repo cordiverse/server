@@ -199,7 +199,7 @@ class Server extends Service {
         }
       }
 
-      if (!isNullable(res.body)) return
+      if (res.bodyUsed) return
       const methods = new Set<string>()
       let asterisk = false
       for (const route of this.httpRoutes) {

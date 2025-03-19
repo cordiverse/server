@@ -2,6 +2,7 @@
   "name": "@cordisjs/plugin-server-proxy",
   "description": "Proxy plugin for cordis",
   "version": "1.0.0",
+  "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -28,13 +29,13 @@
     "plugin"
   ],
   "peerDependencies": {
-    "@cordisjs/plugin-http": "^1.0.1",
-    "@cordisjs/plugin-server": "^1.0.3",
+    "@cordisjs/plugin-http": "^1.0.2",
+    "@cordisjs/plugin-server": "^1.1.0",
     "cordis": "^4.0.0-alpha.7"
   },
   "devDependencies": {
-    "@cordisjs/plugin-http": "^1.0.1",
-    "@cordisjs/plugin-server": "^1.0.3",
+    "@cordisjs/plugin-http": "^1.0.2",
+    "@cordisjs/plugin-server": "^1.1.0",
     "cordis": "^4.0.0-alpha.7"
   }
 }

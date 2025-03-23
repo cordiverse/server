@@ -1,5 +1,5 @@
-import { Context, DisposableList, Service, z } from 'cordis'
-import { defineProperty, isNullable, trimSlash } from 'cosmokit'
+import { Context, DisposableList, Inject, Service, z } from 'cordis'
+import { Awaitable, defineProperty, trimSlash } from 'cosmokit'
 import * as http from 'node:http'
 import { Keys, pathToRegexp } from 'path-to-regexp'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -71,9 +71,13 @@ export type ExtractParams<S extends string, O extends {} = {}, A extends 0[] = [
 export abstract class Route {
   regexp: RegExp
   keys?: Keys
+  config: Server.Intercept
 
   constructor(protected server: Server, label: string, public path: string | RegExp) {
-    server.ctx.logger?.('server:route').debug('register %s %s', label, path)
+    this.config = server[Server.resolveConfig]()
+    const paths = [path]
+    if (this.config.path) paths.unshift(this.config.path)
+    server.ctx.logger?.('server:route').debug('register', label, ...paths)
     if (typeof path === 'string') {
       const { regexp, keys } = pathToRegexp(path)
       this.regexp = regexp
@@ -84,7 +88,12 @@ export abstract class Route {
   }
 
   check(req: Request) {
-    const capture = this.regexp.exec(req.url!)
+    let url = req.url
+    if (this.config.path) {
+      if (!url.startsWith(this.config.path)) return
+      url = url.slice(this.config.path.length)
+    }
+    const capture = this.regexp.exec(url)
     if (!capture) return
     let params: any
     if (this.keys) {
@@ -102,7 +111,7 @@ export abstract class Route {
   }
 }
 
-type WsHandler<P = any> = (req: Request & { params: P }, next: () => Promise<WebSocket>) => Promise<void>
+type WsHandler<P = any> = (req: Request & { params: P }, next: () => Promise<WebSocket>) => Awaitable<void>
 
 export class WsRoute extends Route {
   clients = new Set<WebSocket>()
@@ -150,11 +159,8 @@ interface RouteImpl {
 
 interface Server extends Record<typeof Server.methods[number], RouteImpl> {}
 
-class Server extends Service {
-  static readonly inject = {
-    logger: { required: false },
-  }
-
+@Inject('logger', false)
+class Server extends Service<Server.Intercept> {
   static readonly methods = ['all', 'get', 'delete', 'head', 'post', 'put', 'patch'] as const
 
   static {
@@ -295,6 +301,10 @@ class Server extends Service {
 }
 
 namespace Server {
+  export interface Intercept {
+    path?: string
+  }
+
   export interface Config extends ListenOptions {
     host: string
     port: number

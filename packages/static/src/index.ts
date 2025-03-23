@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { Dict } from 'cosmokit'
 
 export interface Config {
-  path: string
+  // path: string
   root: string
   download?: boolean
   fallthrough?: boolean
@@ -17,7 +17,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  path: z.string().required(),
+  // path: z.string().required(),
   root: z.string().required(),
   download: z.boolean(),
   fallthrough: z.boolean(),
@@ -28,8 +28,18 @@ export const Config: z<Config> = z.object({
 })
 
 export const inject = {
-  server: { required: true },
-  logger: { required: false, config: { name: 'server:static' } },
+  server: {
+    required: true,
+    config: {
+      path: '/static',
+    },
+  },
+  logger: {
+    required: false,
+    config: {
+      name: 'server:static',
+    },
+  },
 }
 
 export function apply(ctx: Context, config: Config) {
@@ -40,8 +50,8 @@ export function apply(ctx: Context, config: Config) {
     })
   }
 
-  ctx.server.get(config.path + '{/*path}', async (req, res, next) => {
-    let path = req.url.slice(config.path.length)
+  ctx.server.get('{/*path}', async (req, res, next) => {
+    let path = req.params.path ?? ''
     if (path.endsWith('/') && config.index) {
       path += config.index
     }
@@ -52,7 +62,7 @@ export function apply(ctx: Context, config: Config) {
       const response = await _fetchFile(filename + ext)
       if (response.ok) return response
     }
-    if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect) {
+    if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect && !req.url.endsWith('/')) {
       return new Response(null, {
         status: 301,
         statusText: 'Moved Permanently',

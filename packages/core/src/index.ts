@@ -73,6 +73,8 @@ export abstract class Route {
   keys?: Keys
   config: Server.Intercept
 
+  abstract dispose: () => void
+
   constructor(protected server: Server, label: string, public path: string | RegExp) {
     this.config = server[Server.resolveConfig]()
     const paths = [path]
@@ -115,7 +117,7 @@ type WsHandler<P = any> = (req: Request & { params: P }, next: () => Promise<Web
 
 export class WsRoute extends Route {
   clients = new Set<WebSocket>()
-  dispose: () => Promise<void>
+  dispose: () => void
 
   constructor(server: Server, path: string | RegExp, public handle?: WsHandler) {
     super(server, 'WS', path)
@@ -134,7 +136,7 @@ export class WsRoute extends Route {
 export type Middleware<P = any> = (req: Request & { params: P }, res: Response, next: () => Promise<globalThis.Response | void>) => Promise<globalThis.Response | void>
 
 class HttpRoute extends Route {
-  dispose: () => Promise<void>
+  dispose: () => void
 
   constructor(server: Server, public method: string, path: string | RegExp, public callback: Middleware) {
     super(server, method, path)
@@ -265,7 +267,7 @@ class Server extends Service<Server.Intercept> {
     }
   }
 
-  async* [Context.init]() {
+  async* [Service.init]() {
     this.host = this.config.host
     this.port = await listen(this.config)
     this._http.listen(this.port, this.host)

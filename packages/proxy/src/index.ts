@@ -1,6 +1,6 @@
 import { Context, z } from 'cordis'
-import {} from '@cordisjs/plugin-http'
-import {} from '@cordisjs/plugin-server'
+import type {} from '@cordisjs/plugin-http'
+import type {} from '@cordisjs/plugin-server'
 
 export interface Config {
   // path: string
@@ -24,15 +24,10 @@ export const inject = {
 
 export function apply(ctx: Context, config: Config) {
   ctx.server.get('{/*path}', async (req, res, next) => {
-    const response = await ctx.http(config.baseUrl + req.params.path, {
+    return ctx.http(config.baseUrl + req.params.path, {
       method: req.method as any,
       headers: req.headers,
       responseType: 'stream',
     })
-    res.status = response.status
-    for (const [key, value] of response.headers) {
-      res.headers.set(key, value)
-    }
-    res.body = response.data
   })
 }

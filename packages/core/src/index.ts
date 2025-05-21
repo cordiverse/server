@@ -1,5 +1,6 @@
 import { Context, DisposableList, Inject, Service, z } from 'cordis'
 import { Awaitable, defineProperty, trimSlash } from 'cosmokit'
+import type {} from '@cordisjs/plugin-logger'
 import * as http from 'node:http'
 import { Keys, pathToRegexp } from 'path-to-regexp'
 import { WebSocket, WebSocketServer } from 'ws'

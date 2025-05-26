@@ -6,8 +6,8 @@ import { koaBody } from 'koa-body'
 import parseUrl from 'parseurl'
 import { WebSocket, WebSocketServer } from 'ws'
 import Schema from 'schemastery'
-import KoaRouter, { Middleware } from '@koa/router'
-import Koa from 'koa'
+import KoaRouter from '@koa/router'
+import Koa, { Middleware } from 'koa'
 import { listen } from './listen'
 
 export {} from 'koa-body'
@@ -80,13 +80,19 @@ export class Server extends KoaRouter {
     ctx.alias('server', ['router'])
 
     // create server
-    this._body = koaBody({
+    const body = koaBody({
       multipart: true,
       jsonLimit: '10mb',
       formLimit: '10mb',
       textLimit: '10mb',
       includeUnparsed: true,
     })
+    // ensure body parser is only applied once
+    this._body = async (c, next) => {
+      if (c[Symbol.for('isBodyParsed')]) return next()
+      c[Symbol.for('isBodyParsed')] = true
+      await body(c, next)
+    }
     this._koa.use(this.routes())
     this._koa.use(this.allowedMethods())
 

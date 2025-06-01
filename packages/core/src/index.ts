@@ -2,7 +2,7 @@ import { Context, DisposableList, Inject, Service, z } from 'cordis'
 import { Awaitable, defineProperty, trimSlash } from 'cosmokit'
 import type {} from '@cordisjs/plugin-logger'
 import * as http from 'node:http'
-import { Keys, pathToRegexp } from 'path-to-regexp'
+import { ExtractParams, Keys, pathToRegexp } from 'path-to-regexp-typed'
 import { WebSocket, WebSocketServer } from 'ws'
 import { listen, ListenOptions } from './listen'
 import { Request, Response } from './body'
@@ -20,54 +20,6 @@ declare module 'cordis' {
     'server/__route'(this: Server, req: Request, res: Response, next: () => Promise<globalThis.Response | void>): Promise<globalThis.Response | void>
   }
 }
-
-type Upper =
-  | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
-  | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z'
-
-type Lower =
-  | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
-  | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
-
-type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
-type Take<S extends string, D extends string, O extends string = ''> =
-  | S extends `${infer C extends D}${infer S}`
-  ? Take<S, D, `${O}${C}`>
-  : [O, S]
-
-type TakeIdent<S extends string> =
-  | S extends `"${infer P}"${infer S}`
-  ? [P, S]
-  : Take<S, Upper | Lower | Digit | '_'>
-
-// path-to-regexp v8 syntax
-export type ExtractParams<S extends string, O extends {} = {}, A extends 0[] = []> =
-  | string extends S
-  ? any
-  : S extends `${infer C}${infer S}`
-  ? | C extends '\\'
-    ? | S extends `${string}${infer S}`
-      ? ExtractParams<S, O, A>
-      : O
-    : C extends ':' | '*'
-    ? | TakeIdent<S> extends [infer P extends string, infer S extends string]
-      ? ExtractParams<S, O & (
-        | A['length'] extends 0
-        ? { [K in P]: string }
-        : { [K in P]?: string }
-      ), A>
-      : never
-    : C extends '{'
-    ? ExtractParams<S, O, [0, ...A]>
-    : C extends '}'
-    ? | A extends [0, ...infer A extends 0[]]
-      ? ExtractParams<S, O, A>
-      : ExtractParams<S, O, A>
-    : ExtractParams<S, O, A>
-  : O
 
 export abstract class Route {
   regexp: RegExp

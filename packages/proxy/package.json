@@ -27,5 +27,15 @@
     "server",
     "service",
     "plugin"
-  ]
+  ],
+  "peerDependencies": {
+    "cordis": "^3.18.1"
+  },
+  "devDependencies": {
+    "cordis": "^3.18.1"
+  },
+  "dependencies": {
+    "cosmokit": "^1.8.1",
+    "schemastery": "^3.17.2"
+  }
 }

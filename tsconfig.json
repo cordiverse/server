@@ -1,10 +1,9 @@
 {
   "extends": "./tsconfig.base",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@cordisjs/plugin-server": ["packages/core/src"],
-      "@cordisjs/plugin-server-*": ["packages/*/src"],
+      "@cordisjs/plugin-server": ["./packages/core/src"],
+      "@cordisjs/plugin-server-*": ["./packages/*/src"],
     },
   },
   "files": [],

@@ -1,4 +1,4 @@
-import { Context, DisposableList, Inject, Service, z } from 'cordis'
+import { Context, DisposableList, Inject, Service } from 'cordis'
 import { Awaitable, defineProperty, trimSlash } from 'cosmokit'
 import type {} from '@cordisjs/plugin-logger'
 import * as http from 'node:http'
@@ -6,6 +6,7 @@ import { ExtractParams, Keys, pathToRegexp } from 'path-to-regexp-typed'
 import { WebSocket, WebSocketServer } from 'ws'
 import { listen, ListenOptions } from './listen'
 import { Request, Response } from './body'
+import z from 'schemastery'
 
 export * from './body'
 

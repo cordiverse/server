@@ -1,6 +1,7 @@
-import { Context, z } from 'cordis'
+import { Context } from 'cordis'
 import type {} from '@cordisjs/plugin-http'
 import type {} from '@cordisjs/plugin-server'
+import z from 'schemastery'
 
 export interface Config {
   // path: string

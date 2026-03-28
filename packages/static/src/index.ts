@@ -1,10 +1,11 @@
-import { Context, z } from 'cordis'
+import { Context } from 'cordis'
 import fetchFile from '@cordisjs/fetch-file'
 import type {} from '@cordisjs/plugin-logger'
 import type {} from '@cordisjs/plugin-server'
 import { pathToFileURL } from 'node:url'
 import { join, resolve } from 'node:path'
 import { Dict } from 'cosmokit'
+import z from 'schemastery'
 
 export interface Config {
   // path: string

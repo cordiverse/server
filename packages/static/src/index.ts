@@ -2,7 +2,7 @@ import { Context } from 'cordis'
 import fetchFile from '@cordisjs/fetch-file'
 import type {} from '@cordisjs/plugin-logger'
 import type {} from '@cordisjs/plugin-server'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join, resolve } from 'node:path'
 import { Dict } from 'cosmokit'
 import z from 'schemastery'
@@ -45,6 +45,8 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
+  const baseDir = fileURLToPath(new URL(config.root, ctx.get('baseUrl')))
+
   function _fetchFile(filename: string) {
     return fetchFile(pathToFileURL(filename), {}, {
       download: config.download,
@@ -57,7 +59,7 @@ export function apply(ctx: Context, config: Config) {
     if (path.endsWith('/') && config.index) {
       path += config.index
     }
-    const filename = join(resolve(ctx.baseDir, config.root), path)
+    const filename = join(resolve(baseDir, config.root), path)
     const response = await _fetchFile(filename)
     if (response.ok) return response
     for (const ext of config.extensions) {
@@ -73,7 +75,7 @@ export function apply(ctx: Context, config: Config) {
     }
     if (config.fallthrough) return next()
     if (config.errorPages[response.status]) {
-      return _fetchFile(resolve(ctx.baseDir, config.root, config.errorPages[response.status]))
+      return _fetchFile(resolve(baseDir, config.root, config.errorPages[response.status]))
     }
     return new Response(null, { status: 404, statusText: 'Not Found' })
   })

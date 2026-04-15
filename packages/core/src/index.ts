@@ -248,8 +248,7 @@ class Server extends Service<Server.Intercept> {
 
   async* [Service.init]() {
     this.host = this.config.host
-    this.port = await listen(this.config)
-    this._http.listen(this.port, this.host)
+    this.port = await listen(this._http, this.config)
     yield () => new Promise<void>((resolve, reject) => {
       this._http.close((err) => err ? reject(err) : resolve())
     })

@@ -1,4 +1,4 @@
-import net from 'node:net'
+import type net from 'node:net'
 
 export interface ListenOptions {
   host: string
@@ -6,15 +6,11 @@ export interface ListenOptions {
   maxPort?: number
 }
 
-export function listen({ host, port, maxPort = port }: ListenOptions) {
-  const server = net.createServer()
-
+export function listen(server: net.Server, { host, port, maxPort = port }: ListenOptions) {
   return new Promise<number>((resolve, reject) => {
     function onListen() {
       server.off('error', onError)
-      server.close((err) => {
-        err ? reject(err) : resolve(port)
-      })
+      resolve(port)
     }
 
     function onError(err: NodeJS.ErrnoException) {
@@ -26,15 +22,15 @@ export function listen({ host, port, maxPort = port }: ListenOptions) {
       if (port > maxPort) {
         return reject(new Error('No open ports available'))
       }
-      testPort()
+      tryListen()
     }
 
-    function testPort() {
+    function tryListen() {
       server.once('error', onError)
       server.once('listening', onListen)
       server.listen(port, host)
     }
 
-    testPort()
+    tryListen()
   })
 }

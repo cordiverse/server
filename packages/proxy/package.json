@@ -31,12 +31,12 @@
   "peerDependencies": {
     "@cordisjs/plugin-http": "^1.2.0",
     "@cordisjs/plugin-server": "^1.2.0",
-    "cordis": "^4.0.0-rc.0"
+    "cordis": "^4.0.0-rc.1"
   },
   "devDependencies": {
     "@cordisjs/plugin-http": "^1.2.0",
     "@cordisjs/plugin-server": "^1.2.0",
-    "cordis": "^4.0.0-rc.0"
+    "cordis": "^4.0.0-rc.1"
   },
   "dependencies": {
     "schemastery": "^3.18.0"

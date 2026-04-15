@@ -1,0 +1,182 @@
+import { Context } from 'cordis'
+import { expect } from 'chai'
+import HTTP from '@cordisjs/plugin-http'
+import Server from '@cordisjs/plugin-server'
+import * as Proxy from '../src'
+
+function sleep(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+describe('@cordisjs/plugin-server-proxy', () => {
+  let upstream: Context
+  let proxy: Context
+  let upstreamUrl: string
+  let proxyUrl: string
+
+  beforeEach(async () => {
+    // upstream server
+    upstream = new Context()
+    await upstream.plugin(Server, {
+      host: '127.0.0.1',
+      port: 50000,
+      maxPort: 50999,
+    })
+    upstreamUrl = upstream.server.selfUrl
+
+    // proxy server
+    proxy = new Context()
+    await proxy.plugin(Server, {
+      host: '127.0.0.1',
+      port: 51000,
+      maxPort: 51999,
+    })
+    await proxy.plugin(HTTP)
+    await proxy.plugin(Proxy, {
+      baseUrl: upstreamUrl,
+    })
+    proxyUrl = proxy.server.selfUrl
+  })
+
+  afterEach(async () => {
+    proxy?.registry.delete(Server)
+    upstream?.registry.delete(Server)
+    await sleep()
+  })
+
+  describe('GET requests', () => {
+    it('should proxy a simple GET request', async () => {
+      upstream.server.get('/hello', async (req, res, next) => {
+        res.body = 'world'
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/hello`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('world')
+    })
+
+    it('should proxy nested paths', async () => {
+      upstream.server.get('/api/users/:id', async (req, res, next) => {
+        res.body = req.params.id
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/api/users/42`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('42')
+    })
+
+    it('should forward query string', async () => {
+      upstream.server.get('/search', async (req, res, next) => {
+        res.body = req.query.get('q') ?? ''
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/search?q=hello`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('hello')
+    })
+
+    it('should proxy root path', async () => {
+      upstream.server.get('/', async (req, res, next) => {
+        res.body = 'root'
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('root')
+    })
+  })
+
+  describe('POST requests', () => {
+    it('should forward request body', async () => {
+      upstream.server.post('/echo', async (req, res, next) => {
+        const text = await req.text()
+        res.body = text
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/echo`, {
+        method: 'POST',
+        body: 'hello proxy',
+      })
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('hello proxy')
+    })
+
+    it('should forward JSON body', async () => {
+      upstream.server.post('/json', async (req, res, next) => {
+        const data = await req.json()
+        return new Response(JSON.stringify(data), {
+          headers: { 'content-type': 'application/json' },
+        })
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/json`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ foo: 'bar' }),
+      })
+      expect(res.status).to.equal(200)
+      expect(await res.json()).to.deep.equal({ foo: 'bar' })
+    })
+  })
+
+  describe('status codes', () => {
+    it('should forward upstream status codes', async () => {
+      upstream.server.get('/not-found', async (req, res, next) => {
+        return new Response(null, { status: 404, statusText: 'Not Found' })
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/not-found`)
+      expect(res.status).to.equal(404)
+    })
+  })
+
+  describe('response headers', () => {
+    it('should forward upstream response headers', async () => {
+      upstream.server.get('/headers', async (req, res, next) => {
+        return new Response('ok', {
+          headers: { 'x-custom': 'value' },
+        })
+      })
+      await sleep()
+
+      const res = await fetch(`${proxyUrl}/headers`)
+      expect(res.headers.get('x-custom')).to.equal('value')
+    })
+  })
+
+  describe('baseUrl with path prefix', () => {
+    it('should correctly join with baseUrl path', async () => {
+      upstream.server.get('/api/v1/data', async (req, res, next) => {
+        res.body = 'scoped'
+      })
+      await sleep()
+
+      // Create a new proxy with path prefix
+      const scoped = new Context()
+      await scoped.plugin(Server, {
+        host: '127.0.0.1',
+        port: 52000,
+        maxPort: 52999,
+      })
+      await scoped.plugin(HTTP)
+      await scoped.plugin(Proxy, {
+        baseUrl: upstreamUrl + '/api/v1/',
+      })
+      const scopedUrl = scoped.server.selfUrl
+
+      const res = await fetch(`${scopedUrl}/data`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('scoped')
+
+      scoped.registry.delete(Server)
+      await sleep()
+    })
+  })
+})

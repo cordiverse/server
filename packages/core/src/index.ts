@@ -44,12 +44,12 @@ export abstract class Route {
   }
 
   check(req: Request) {
-    let url = req.url.split('?')[0]
+    let pathname = req.path
     if (this.config.path) {
-      if (!url.startsWith(this.config.path)) return
-      url = url.slice(this.config.path.length)
+      if (!pathname.startsWith(this.config.path)) return
+      pathname = pathname.slice(this.config.path.length)
     }
-    const capture = this.regexp.exec(url)
+    const capture = this.regexp.exec(pathname)
     if (!capture) return
     let params: any
     if (this.keys) {
@@ -196,7 +196,7 @@ class Server extends Service<Server.Intercept> {
 
     this._http.on('upgrade', async (_req, socket, head) => {
       const req = new Request(_req)
-      this.ctx.logger?.('server:ws').debug('upgrade %s', req.url)
+      this.ctx.logger?.('server:ws').debug('upgrade %s', req.path)
       for (const route of this.wsRoutes) {
         const params = route.check(req)
         if (!params) continue
@@ -209,9 +209,9 @@ class Server extends Service<Server.Intercept> {
             route.clients.add(ws)
             ws.on('close', () => {
               route.clients.delete(ws)
-              this.ctx.logger?.('server:ws').debug('close %s', req.url)
+              this.ctx.logger?.('server:ws').debug('close %s', req.path)
             })
-            this.ctx.logger?.('server:ws').debug('accept %s', req.url)
+            this.ctx.logger?.('server:ws').debug('accept %s', req.path)
             resolve(ws)
           })
         })
@@ -231,12 +231,12 @@ class Server extends Service<Server.Intercept> {
           }
         }
         if (!connection && !socket.destroyed) {
-          this.ctx.logger?.('server:ws').warn('ws handler for %s did not call accept()', req.url)
+          this.ctx.logger?.('server:ws').warn('ws handler for %s did not call accept()', req.path)
           socket.destroy()
         }
         return
       }
-      this.ctx.logger?.('server:ws').debug('refuse %s', req.url)
+      this.ctx.logger?.('server:ws').debug('refuse %s', req.path)
       socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
       socket.destroy()
     })

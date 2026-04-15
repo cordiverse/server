@@ -85,11 +85,11 @@ export function apply(ctx: Context, config: Config) {
       if (response.ok) return response
       status = response.status
       statusText = response.statusText
-      if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect && !req.url.endsWith('/')) {
+      if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect && !req.path.endsWith('/')) {
         return new Response(null, {
           status: 301,
           statusText: 'Moved Permanently',
-          headers: { Location: req.url + '/' },
+          headers: { Location: req.path + '/' },
         })
       }
     }

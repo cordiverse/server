@@ -7,8 +7,9 @@ import accepts from 'accepts'
 export class Request implements Body {
   readonly url: string
   readonly method: string
-  readonly headers: Headers
+  readonly path: string
   readonly query: URLSearchParams
+  readonly headers: Headers
 
   private _accepts?: accepts.Accepts
   private _bodyImpl: globalThis.Response
@@ -17,7 +18,8 @@ export class Request implements Body {
     defineProperty(this, Service.tracker, { associate: 'server.request' })
     this.url = _req.url!
     this.method = _req.method!
-    this.query = new URLSearchParams(_req.url!.split('?')[1])
+    this.path = this.url.split('?')[0]
+    this.query = new URLSearchParams(this.url.split('?')[1])
     this.headers = new Headers()
     for (const [key, value] of Object.entries(_req.headers)) {
       if (Array.isArray(value)) {

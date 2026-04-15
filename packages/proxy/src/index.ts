@@ -28,12 +28,10 @@ export function apply(ctx: Context, config: Config) {
   const bodyMethods = new Set(['POST', 'PUT', 'PATCH'])
 
   ctx.server.all('{/*path}', async (req, res, next) => {
-    const path = req.params.path ?? ''
-    const target = new URL(path, baseUrl)
-    const query = req.url.split('?')[1]
-    if (query) target.search = query
-    ctx.logger?.debug('%s %s -> %s', req.method, req.url, target.href)
-    return ctx.http(target.href, {
+    const url = new URL(req.params.path ?? '', baseUrl)
+    url.search = req.query.toString()
+    ctx.logger?.debug('%s %s -> %s', req.method, req.url, url.href)
+    return ctx.http(url.href, {
       method: req.method as any,
       headers: req.headers,
       data: bodyMethods.has(req.method) ? req.body : undefined,

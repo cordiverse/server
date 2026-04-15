@@ -3,12 +3,11 @@ import fetchFile from '@cordisjs/fetch-file'
 import type {} from '@cordisjs/plugin-logger'
 import type {} from '@cordisjs/plugin-server'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { Dict } from 'cosmokit'
 import z from 'schemastery'
 
 export interface Config {
-  // path: string
   root: string
   download?: boolean
   fallthrough?: boolean
@@ -19,7 +18,6 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  // path: z.string().required(),
   root: z.string().required(),
   download: z.boolean(),
   fallthrough: z.boolean(),
@@ -59,13 +57,12 @@ export function apply(ctx: Context, config: Config) {
     if (path.endsWith('/') && config.index) {
       path += config.index
     }
-    const filename = join(resolve(baseDir, config.root), path)
+    const filename = resolve(baseDir, path)
+    if (!filename.startsWith(baseDir)) {
+      return new Response(null, { status: 403, statusText: 'Forbidden' })
+    }
     const response = await _fetchFile(filename)
     if (response.ok) return response
-    for (const ext of config.extensions) {
-      const response = await _fetchFile(filename + ext)
-      if (response.ok) return response
-    }
     if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect && !req.url.endsWith('/')) {
       return new Response(null, {
         status: 301,
@@ -73,10 +70,24 @@ export function apply(ctx: Context, config: Config) {
         headers: { Location: req.url + '/' },
       })
     }
-    if (config.fallthrough) return next()
-    if (config.errorPages[response.status]) {
-      return _fetchFile(resolve(baseDir, config.root, config.errorPages[response.status]))
+    for (const ext of config.extensions) {
+      const response = await _fetchFile(filename + ext)
+      if (response.ok) return response
     }
-    return new Response(null, { status: 404, statusText: 'Not Found' })
+    if (config.fallthrough) return next()
+    const errorPagePath = config.errorPages[response.status]
+    if (errorPagePath) {
+      const errorPage = await fetchFile(pathToFileURL(resolve(baseDir, errorPagePath)), {}, {
+        onError: ctx.logger?.warn,
+      })
+      if (errorPage.ok) {
+        return new Response(errorPage.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: errorPage.headers,
+        })
+      }
+    }
+    return response
   })
 }

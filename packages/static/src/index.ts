@@ -28,12 +28,7 @@ export const Config: z<Config> = z.object({
 })
 
 export const inject = {
-  server: {
-    required: true,
-    config: {
-      path: '/static',
-    },
-  },
+  server: true,
   logger: {
     required: false,
     config: {
@@ -53,8 +48,8 @@ export function apply(ctx: Context, config: Config) {
   }
 
   ctx.server.get('{/*path}', async (req, res, next) => {
-    let path = req.params.path ?? ''
-    if (path.endsWith('/') && config.index) {
+    let path = req.params.path?.replace(/^\/+/, '') ?? ''
+    if ((!path || path.endsWith('/')) && config.index) {
       path += config.index
     }
     const filename = resolve(baseDir, path)

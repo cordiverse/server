@@ -173,20 +173,22 @@ class Server extends Service<Server.Intercept> {
       let asterisk = false
       for (const route of this.httpRoutes) {
         if (!route.check(req)) continue
-        if (route.method) {
-          methods.add(route.method)
-        } else {
+        if (route.method === 'all') {
           asterisk = true
           break
         }
+        methods.add(route.method)
       }
       if (!methods.size && !asterisk) {
         res.status = 404
-      } else if (req.method === 'OPTIONS') {
-        res.status = 204
-        res.headers.set('allow', asterisk ? '*' : [...methods].join(', '))
       } else {
-        res.status = 405
+        const allow = asterisk ? '*' : [...methods].join(', ')
+        if (req.method === 'OPTIONS') {
+          res.status = 204
+        } else {
+          res.status = 405
+        }
+        res.headers.set('allow', allow)
       }
     })
 

@@ -181,7 +181,7 @@ describe('@cordisjs/plugin-server', () => {
       expect(res.status).to.equal(404)
     })
 
-    it('should return 405 for mismatched method', async () => {
+    it('should return 405 with Allow header for mismatched method', async () => {
       ctx.server.get('/only-get', async (req, res, next) => {
         res.body = 'ok'
       })
@@ -189,6 +189,18 @@ describe('@cordisjs/plugin-server', () => {
 
       const res = await fetch(`${url}/only-get`, { method: 'POST' })
       expect(res.status).to.equal(405)
+      expect(res.headers.get('allow')).to.equal('get')
+    })
+
+    it('should treat all() as wildcard method in Allow header', async () => {
+      ctx.server.all('/any', async (req, res, next) => {
+        return next()
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/any`, { method: 'OPTIONS' })
+      expect(res.status).to.equal(204)
+      expect(res.headers.get('allow')).to.equal('*')
     })
 
     it('should handle OPTIONS with Allow header', async () => {

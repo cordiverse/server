@@ -163,6 +163,28 @@ describe('@cordisjs/plugin-server-static', () => {
     })
   })
 
+  describe('exclude', () => {
+    it('should block files matching exclude pattern', async () => {
+      ({ ctx, url } = await setup({ exclude: ['**/.*'] }))
+      const res = await fetch(`${url}/.secret`)
+      expect(res.status).to.equal(404)
+    })
+
+    it('should serve files not matching exclude pattern', async () => {
+      ({ ctx, url } = await setup({ exclude: ['**/.*'] }))
+      const res = await fetch(`${url}/hello.html`)
+      expect(res.status).to.equal(200)
+    })
+
+    it('should support multiple exclude patterns', async () => {
+      ({ ctx, url } = await setup({ exclude: ['*.html', 'noext'] }))
+      const res1 = await fetch(`${url}/hello.html`)
+      expect(res1.status).to.equal(404)
+      const res2 = await fetch(`${url}/noext`)
+      expect(res2.status).to.equal(404)
+    })
+  })
+
   describe('download mode', () => {
     it('should set content-disposition when download is true', async () => {
       ({ ctx, url } = await setup({ download: true }))

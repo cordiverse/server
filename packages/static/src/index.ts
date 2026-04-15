@@ -5,12 +5,14 @@ import type {} from '@cordisjs/plugin-server'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { Dict } from 'cosmokit'
+import picomatch from 'picomatch'
 import z from 'schemastery'
 
 export interface Config {
   root: string
   download?: boolean
   fallthrough?: boolean
+  exclude: string[]
   index: string[]
   redirect: boolean
   extensions: string[]
@@ -21,6 +23,7 @@ export const Config: z<Config> = z.object({
   root: z.string().required(),
   download: z.boolean(),
   fallthrough: z.boolean(),
+  exclude: z.array(String),
   index: z.array(String).default(['index.html', 'index.htm']),
   redirect: z.boolean().default(true),
   extensions: z.array(String),
@@ -39,6 +42,7 @@ export const inject = {
 
 export function apply(ctx: Context, config: Config) {
   const baseDir = fileURLToPath(new URL(config.root, ctx.get('baseUrl'))).replace(/\/+$/, '')
+  const isExcluded = config.exclude.length ? picomatch(config.exclude, { dot: true }) : () => false
 
   function _fetchFile(filename: string) {
     return fetchFile(pathToFileURL(filename), {}, {
@@ -48,9 +52,14 @@ export function apply(ctx: Context, config: Config) {
   }
 
   async function _tryFile(filename: string) {
-    const response = await _fetchFile(filename)
-    if (response.ok) return response
+    const rel = filename.slice(baseDir.length + 1)
+    let response = new Response(null, { status: 404, statusText: 'Not Found' })
+    if (!isExcluded(rel)) {
+      response = await _fetchFile(filename)
+      if (response.ok) return response
+    }
     for (const ext of config.extensions) {
+      if (isExcluded(rel + ext)) continue
       const response = await _fetchFile(filename + ext)
       if (response.ok) return response
     }

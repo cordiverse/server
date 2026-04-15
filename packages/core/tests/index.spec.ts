@@ -471,6 +471,20 @@ describe('@cordisjs/plugin-server', () => {
       const { statusCode } = await connectRaw('/ws')
       expect(statusCode).to.equal(500)
     })
+
+    it('should destroy socket when handler does not accept', async () => {
+      ctx.server.ws('/ws', async (req, accept) => {
+        // intentionally not calling accept
+      })
+      await sleep()
+
+      const result = await new Promise<string>((resolve) => {
+        const ws = new WebSocket(url.replace('http', 'ws') + '/ws')
+        ws.on('error', (err) => resolve(err.message))
+        ws.on('open', () => resolve('open'))
+      })
+      expect(result).to.not.equal('open')
+    })
   })
 
   describe('intercept path prefix', () => {

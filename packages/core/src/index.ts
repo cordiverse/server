@@ -67,7 +67,7 @@ export abstract class Route {
   }
 }
 
-type WsHandler<P = any> = (req: Request & { params: P }, next: () => Promise<WebSocket>) => Awaitable<void>
+type WsHandler<P = any> = (req: Request & { params: P }, accept: () => Promise<WebSocket>) => Awaitable<void>
 
 export class WsRoute extends Route {
   clients = new Set<WebSocket>()
@@ -194,14 +194,22 @@ class Server extends Service<Server.Intercept> {
 
     this._http.on('upgrade', async (_req, socket, head) => {
       const req = new Request(_req)
+      this.ctx.logger?.('server:ws').debug('upgrade %s', req.url)
       for (const route of this.wsRoutes) {
         const params = route.check(req)
         if (!params) continue
+        let connection: WebSocket | undefined
         const accept = () => new Promise<WebSocket>((resolve) => {
+          // handleUpgrade calls the callback synchronously upon success
           this._ws.handleUpgrade(_req, socket, head, (ws) => {
+            connection = ws
             this._ws.emit('connection', ws, _req)
             route.clients.add(ws)
-            ws.on('close', () => route.clients.delete(ws))
+            ws.on('close', () => {
+              route.clients.delete(ws)
+              this.ctx.logger?.('server:ws').debug('close %s', req.url)
+            })
+            this.ctx.logger?.('server:ws').debug('accept %s', req.url)
             resolve(ws)
           })
         })
@@ -213,11 +221,20 @@ class Server extends Service<Server.Intercept> {
           await route.handle(Object.assign(Object.create(req), { params }), accept)
         } catch (error) {
           this.ctx.logger?.error(error)
-          socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n')
+          if (connection) {
+            connection.close()
+          } else if (!socket.destroyed) {
+            socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n')
+            socket.destroy()
+          }
+        }
+        if (!connection && !socket.destroyed) {
+          this.ctx.logger?.('server:ws').warn('ws handler for %s did not call accept()', req.url)
           socket.destroy()
         }
         return
       }
+      this.ctx.logger?.('server:ws').debug('refuse %s', req.url)
       socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
       socket.destroy()
     })

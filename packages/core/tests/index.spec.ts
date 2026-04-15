@@ -1,5 +1,6 @@
 import { Context } from 'cordis'
 import { expect } from 'chai'
+import { WebSocket } from 'ws'
 import Server from '../src'
 
 function sleep(ms = 0) {
@@ -121,6 +122,28 @@ describe('@cordisjs/plugin-server', () => {
       const res = await fetch(`${url}/a/b/c`)
       expect(res.status).to.equal(200)
       expect(await res.text()).to.equal('a/b/c')
+    })
+
+    it('should match route with query string', async () => {
+      ctx.server.get('/search', async (req, res, next) => {
+        res.body = req.query.get('q') ?? ''
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/search?q=hello`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('hello')
+    })
+
+    it('should not leak query string into path params', async () => {
+      ctx.server.get('{/*path}', async (req, res, next) => {
+        res.body = req.params.path
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/a/b?foo=bar`)
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('a/b')
     })
 
     it('should handle regex routes', async () => {
@@ -317,6 +340,136 @@ describe('@cordisjs/plugin-server', () => {
     it('should resolve wildcard host to 127.0.0.1', async () => {
       ({ ctx } = await setup({ host: '0.0.0.0' }))
       expect(ctx.server.selfUrl).to.match(/^http:\/\/127\.0\.0\.1:\d+$/)
+    })
+
+    it('should prefer config.selfUrl when set', async () => {
+      ({ ctx } = await setup({ selfUrl: 'https://example.com/' }))
+      expect(ctx.server.selfUrl).to.equal('https://example.com')
+    })
+  })
+
+  describe('error handling', () => {
+    beforeEach(async () => {
+      ({ ctx, url } = await setup())
+    })
+
+    it('should return 500 when route throws', async () => {
+      ctx.server.get('/error', async (req, res, next) => {
+        throw new Error('test error')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/error`)
+      expect(res.status).to.equal(500)
+    })
+
+    it('should not override status if already set before throw', async () => {
+      ctx.server.get('/error', async (req, res, next) => {
+        res.status = 503
+        throw new Error('test error')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/error`)
+      expect(res.status).to.equal(503)
+    })
+  })
+
+  describe('WebSocket routing', () => {
+    beforeEach(async () => {
+      ({ ctx, url } = await setup())
+    })
+
+    function connect(path: string) {
+      const wsUrl = url.replace('http', 'ws') + path
+      return new Promise<WebSocket>((resolve, reject) => {
+        const ws = new WebSocket(wsUrl)
+        ws.on('open', () => resolve(ws))
+        ws.on('error', reject)
+      })
+    }
+
+    function connectRaw(path: string): Promise<{ statusCode: number }> {
+      const wsUrl = url.replace('http', 'ws') + path
+      return new Promise((resolve) => {
+        const ws = new WebSocket(wsUrl)
+        ws.on('open', () => {
+          ws.close()
+          resolve({ statusCode: 101 })
+        })
+        ws.on('unexpected-response', (_req, res) => {
+          resolve({ statusCode: res.statusCode! })
+        })
+        ws.on('error', () => {})
+      })
+    }
+
+    it('should accept ws connection on matched route', async () => {
+      ctx.server.ws('/ws')
+      await sleep()
+
+      const ws = await connect('/ws')
+      expect(ws.readyState).to.equal(WebSocket.OPEN)
+      ws.close()
+    })
+
+    it('should return 404 for unmatched ws route', async () => {
+      const { statusCode } = await connectRaw('/no-such-ws')
+      expect(statusCode).to.equal(404)
+    })
+
+    it('should track clients and clean up on close', async () => {
+      const route = ctx.server.ws('/ws')
+      await sleep()
+
+      const ws = await connect('/ws')
+      expect(route.clients.size).to.equal(1)
+
+      const closed = new Promise<void>((resolve) => {
+        for (const client of route.clients) {
+          client.on('close', resolve)
+        }
+      })
+      ws.close()
+      await closed
+      expect(route.clients.size).to.equal(0)
+    })
+
+    it('should close clients on route dispose', async () => {
+      const route = ctx.server.ws('/ws')
+      await sleep()
+
+      const ws = await connect('/ws')
+      const closed = new Promise<void>((resolve) => ws.on('close', resolve))
+
+      route.dispose()
+      await closed
+      expect(ws.readyState).to.equal(WebSocket.CLOSED)
+    })
+
+    it('should support ws handler with accept', async () => {
+      const messages: string[] = []
+      ctx.server.ws('/ws', async (req, accept) => {
+        const ws = await accept()
+        ws.on('message', (data) => messages.push(data.toString()))
+      })
+      await sleep()
+
+      const ws = await connect('/ws')
+      ws.send('hello')
+      await sleep(50)
+      expect(messages).to.deep.equal(['hello'])
+      ws.close()
+    })
+
+    it('should return 500 when ws handler throws', async () => {
+      ctx.server.ws('/ws', async (req, accept) => {
+        throw new Error('ws error')
+      })
+      await sleep()
+
+      const { statusCode } = await connectRaw('/ws')
+      expect(statusCode).to.equal(500)
     })
   })
 

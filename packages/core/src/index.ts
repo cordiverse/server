@@ -44,7 +44,7 @@ export abstract class Route {
   }
 
   check(req: Request) {
-    let url = req.url
+    let url = req.url.split('?')[0]
     if (this.config.path) {
       if (!url.startsWith(this.config.path)) return
       url = url.slice(this.config.path.length)
@@ -147,7 +147,14 @@ class Server extends Service<Server.Intercept> {
       _res.on('finish', () => {
         this.ctx.logger?.('server:response').debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
       })
-      await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
+      try {
+        await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
+      } catch (error) {
+        this.ctx.logger?.error(error)
+        if (!res.bodyUsed) {
+          res.status = 500
+        }
+      }
       res._end()
     })
 
@@ -183,37 +190,36 @@ class Server extends Service<Server.Intercept> {
       }
     })
 
-    this._ws = new WebSocketServer({
-      server: this._http,
-    })
+    this._ws = new WebSocketServer({ noServer: true })
 
-    this._ws.shouldHandle = (_req) => new Promise(async (resolve) => {
+    this._http.on('upgrade', async (_req, socket, head) => {
       const req = new Request(_req)
-      const task = new Promise<WebSocket>((resolve, reject) => {
-        _req['__ws_resolve'] = resolve
-      })
-      const factory = () => {
-        resolve(true)
-        return task
-      }
-      await Promise.all([...this.wsRoutes].map(async (route) => {
+      for (const route of this.wsRoutes) {
         const params = route.check(req)
-        if (!params) return
+        if (!params) continue
+        const accept = () => new Promise<WebSocket>((resolve) => {
+          this._ws.handleUpgrade(_req, socket, head, (ws) => {
+            this._ws.emit('connection', ws, _req)
+            route.clients.add(ws)
+            ws.on('close', () => route.clients.delete(ws))
+            resolve(ws)
+          })
+        })
         if (!route.handle) {
-          await factory()
+          await accept()
           return
         }
         try {
-          await route.handle(Object.assign(Object.create(req), { params }), factory)
+          await route.handle(Object.assign(Object.create(req), { params }), accept)
         } catch (error) {
           this.ctx.logger?.error(error)
+          socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n')
+          socket.destroy()
         }
-      }))
-      resolve(false)
-    })
-
-    this._ws.on('connection', (socket, req) => {
-      req['__ws_resolve']?.(socket)
+        return
+      }
+      socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
+      socket.destroy()
     })
 
     if (config.selfUrl) {
@@ -234,6 +240,7 @@ class Server extends Service<Server.Intercept> {
   }
 
   get selfUrl() {
+    if (this.config.selfUrl) return this.config.selfUrl
     const wildcard = ['0.0.0.0', '::']
     const host = wildcard.includes(this.host) ? '127.0.0.1' : this.host
     if (this.port === 80) {

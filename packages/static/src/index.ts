@@ -11,7 +11,7 @@ export interface Config {
   root: string
   download?: boolean
   fallthrough?: boolean
-  index: string
+  index: string[]
   redirect: boolean
   extensions: string[]
   errorPages: Dict<string>
@@ -21,9 +21,9 @@ export const Config: z<Config> = z.object({
   root: z.string().required(),
   download: z.boolean(),
   fallthrough: z.boolean(),
-  index: z.string().default('index'),
+  index: z.array(String).default(['index.html', 'index.htm']),
   redirect: z.boolean().default(true),
-  extensions: z.array(String).default(['.html', '.htm']),
+  extensions: z.array(String),
   errorPages: z.dict(String),
 })
 
@@ -38,7 +38,7 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
-  const baseDir = fileURLToPath(new URL(config.root, ctx.get('baseUrl')))
+  const baseDir = fileURLToPath(new URL(config.root, ctx.get('baseUrl'))).replace(/\/+$/, '')
 
   function _fetchFile(filename: string) {
     return fetchFile(pathToFileURL(filename), {}, {
@@ -47,42 +47,57 @@ export function apply(ctx: Context, config: Config) {
     })
   }
 
-  ctx.server.get('{/*path}', async (req, res, next) => {
-    let path = req.params.path?.replace(/^\/+/, '') ?? ''
-    if ((!path || path.endsWith('/')) && config.index) {
-      path += config.index
-    }
-    const filename = resolve(baseDir, path)
-    if (!filename.startsWith(baseDir)) {
-      return new Response(null, { status: 403, statusText: 'Forbidden' })
-    }
+  async function _tryFile(filename: string) {
     const response = await _fetchFile(filename)
     if (response.ok) return response
-    if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect && !req.url.endsWith('/')) {
-      return new Response(null, {
-        status: 301,
-        statusText: 'Moved Permanently',
-        headers: { Location: req.url + '/' },
-      })
-    }
     for (const ext of config.extensions) {
       const response = await _fetchFile(filename + ext)
       if (response.ok) return response
     }
-    if (config.fallthrough) return next()
-    const errorPagePath = config.errorPages[response.status]
+    return response
+  }
+
+  ctx.server.get('{/*path}', async (req, res, next) => {
+    const path = req.params.path?.replace(/^\/+/, '') ?? ''
+    const filename = resolve(baseDir, path)
+    let status: number, statusText: string
+    if (filename !== baseDir && !filename.startsWith(baseDir + '/')) {
+      status = 403
+      statusText = 'Forbidden'
+    } else if (!path || path.endsWith('/')) {
+      status = 404
+      statusText = 'Not Found'
+      for (const index of config.index) {
+        const response = await _tryFile(resolve(baseDir, path + index))
+        if (response.ok) return response
+      }
+    } else {
+      const response = await _tryFile(filename)
+      if (response.ok) return response
+      status = response.status
+      statusText = response.statusText
+      if (response[fetchFile.kError]?.code === 'EISDIR' && config.redirect && !req.url.endsWith('/')) {
+        return new Response(null, {
+          status: 301,
+          statusText: 'Moved Permanently',
+          headers: { Location: req.url + '/' },
+        })
+      }
+    }
+    if (status === 404 && config.fallthrough) return next()
+    const errorPagePath = config.errorPages[status]
     if (errorPagePath) {
       const errorPage = await fetchFile(pathToFileURL(resolve(baseDir, errorPagePath)), {}, {
         onError: ctx.logger?.warn,
       })
       if (errorPage.ok) {
         return new Response(errorPage.body, {
-          status: response.status,
-          statusText: response.statusText,
+          status,
+          statusText,
           headers: errorPage.headers,
         })
       }
     }
-    return response
+    return new Response(null, { status, statusText })
   })
 }

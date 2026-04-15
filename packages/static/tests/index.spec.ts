@@ -59,26 +59,24 @@ describe('@cordisjs/plugin-server-static', () => {
   })
 
   describe('extension fallback', () => {
-    beforeEach(async () => {
+    it('should not try extensions by default', async () => {
       ({ ctx, url } = await setup())
+      const res = await fetch(`${url}/hello`)
+      expect(res.status).to.equal(404)
     })
 
-    it('should try .html extension when file not found', async () => {
+    it('should try .html extension when configured', async () => {
+      ({ ctx, url } = await setup({ extensions: ['.html'] }))
       const res = await fetch(`${url}/hello`)
       expect(res.status).to.equal(200)
       expect(await res.text()).to.equal('<h1>Hello</h1>\n')
     })
 
     it('should prefer exact file over extension fallback', async () => {
+      ({ ctx, url } = await setup({ extensions: ['.html'] }))
       const res = await fetch(`${url}/page`)
       expect(res.status).to.equal(200)
       expect(await res.text()).to.equal('<h1>Page without extension</h1>\n')
-    })
-
-    it('should respect custom extensions', async () => {
-      ({ ctx, url } = await setup({ extensions: ['.txt'] }))
-      const res = await fetch(`${url}/hello`)
-      expect(res.status).to.equal(404)
     })
   })
 

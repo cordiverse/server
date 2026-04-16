@@ -41,7 +41,7 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
-  const baseDir = fileURLToPath(new URL(config.root, ctx.get('baseUrl'))).replace(/\/+$/, '')
+  const baseDir = fileURLToPath(new URL(config.root, ctx.baseUrl)).replace(/\/+$/, '')
   const isExcluded = config.exclude.length ? picomatch(config.exclude, { dot: true }) : () => false
 
   function _fetchFile(filename: string) {

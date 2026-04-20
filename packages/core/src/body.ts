@@ -4,7 +4,16 @@ import { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import accepts from 'accepts'
 
-export class Request implements Body {
+export interface Request {
+  arraybuffer(): Promise<ArrayBuffer>
+  blob(): Promise<Blob>
+  bytes(): Promise<Uint8Array>
+  formData(): Promise<FormData>
+  json(): Promise<any>
+  text(): Promise<string>
+}
+
+export class Request {
   readonly url: string
   readonly method: string
   readonly path: string
@@ -51,29 +60,28 @@ export class Request implements Body {
     return this._bodyImpl.bodyUsed
   }
 
-  arrayBuffer() {
-    return this._bodyImpl.arrayBuffer()
+  static {
+    for (const method of ['arrayBuffer', 'blob', 'bytes', 'formData', 'json', 'text'] as const) {
+      this.prototype[method] = function (this: Request) {
+        return this._bodyImpl[method]()
+      }
+    }
   }
+}
 
-  blob() {
-    return this._bodyImpl.blob()
-  }
-
-  bytes() {
-    return this._bodyImpl.bytes()
-  }
-
-  formData() {
-    return this._bodyImpl.formData()
-  }
-
-  json() {
-    return this._bodyImpl.json()
-  }
-
-  text() {
-    return this._bodyImpl.text()
-  }
+export interface Response {
+  arrayBuffer(): Promise<ArrayBuffer>
+  arrayBuffer(data: BufferSource): this
+  blob(): Promise<Blob>
+  blob(data: Blob): this
+  bytes(): Promise<Uint8Array>
+  bytes(data: Uint8Array): this
+  formData(): Promise<FormData>
+  formData(data: FormData): this
+  json(): Promise<any>
+  json(data: any): this
+  text(): Promise<string>
+  text(data: string): this
 }
 
 export class Response {
@@ -81,8 +89,6 @@ export class Response {
 
   private _bodyInit?: BodyInit | null
   private _bodyUsed = false
-
-  legacyMode = false
 
   constructor(public _res: ServerResponse) {
     defineProperty(this, Service.tracker, { associate: 'server.response' })
@@ -95,7 +101,6 @@ export class Response {
 
   set status(value) {
     this._res.statusCode = value
-    this._bodyUsed = true
   }
 
   get statusText() {
@@ -115,23 +120,46 @@ export class Response {
   }
 
   get body() {
-    return this._bodyInit
-  }
-
-  set body(value: BodyInit | null | undefined) {
-    this._bodyInit = value
-    if (!isNullable(value) && !this._bodyUsed) {
-      this._res.statusCode = 200
-      this._bodyUsed = true
-    }
+    return new globalThis.Response(this._bodyInit).body
   }
 
   get bodyUsed() {
     return this._bodyUsed
   }
 
+  private _write(input: BodyInit | null) {
+    const tmp = new globalThis.Response(input)
+    for (const [k, v] of tmp.headers) {
+      if (!this.headers.has(k)) this.headers.set(k, v)
+    }
+    if (!this._bodyUsed && this._res.statusCode === 404) {
+      this._res.statusCode = 200
+    }
+    this._bodyInit = input
+    this._bodyUsed = true
+    return this
+  }
+
+  static {
+    for (const method of ['arrayBuffer', 'blob', 'bytes', 'formData', 'json', 'text'] as const) {
+      this.prototype[method] = function (this: Response, ...args: any[]) {
+        if (args.length === 0) {
+          return new globalThis.Response(this._bodyInit)[method]()
+        }
+        let data = args[0]
+        if (method === 'json') {
+          data = JSON.stringify(data)
+          if (!this.headers.has('content-type')) {
+            this.headers.set('content-type', 'application/json')
+          }
+        }
+        return this._write(data)
+      } as any
+    }
+  }
+
   _end() {
-    if (this.legacyMode) return
+    if (this._res.headersSent) return
     this._res.writeHead(this._res.statusCode, this._res.statusMessage, Object.fromEntries(this.headers))
     if (isNullable(this._bodyInit)) {
       return this._res.end()

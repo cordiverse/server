@@ -229,6 +229,40 @@ describe('@cordisjs/plugin-server', () => {
       const res = await fetch(`${url}/created`)
       expect(res.status).to.equal(201)
     })
+
+    it('should preserve status-only response (redirect)', async () => {
+      ctx.server.get('/redirect', async (req, res, next) => {
+        res.status = 302
+        res.headers.set('location', '/new')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/redirect`, { redirect: 'manual' })
+      expect(res.status).to.equal(302)
+      expect(res.headers.get('location')).to.equal('/new')
+    })
+
+    it('should preserve 204 empty response', async () => {
+      ctx.server.get('/no-content', async (req, res, next) => {
+        res.status = 204
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/no-content`)
+      expect(res.status).to.equal(204)
+    })
+
+    it('should preserve custom 404 body', async () => {
+      ctx.server.get('/nf', async (req, res, next) => {
+        res.status = 404
+        return res.text('custom not found')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/nf`)
+      expect(res.status).to.equal(404)
+      expect(await res.text()).to.equal('custom not found')
+    })
   })
 
   describe('middleware (use)', () => {
@@ -318,6 +352,122 @@ describe('@cordisjs/plugin-server', () => {
 
       const res = await fetch(`${url}/headers`)
       expect(res.headers.get('x-custom')).to.equal('value')
+    })
+
+    it('should auto-derive content-type from res.text()', async () => {
+      ctx.server.get('/t', async (req, res, next) => res.text('hi'))
+      await sleep()
+
+      const res = await fetch(`${url}/t`)
+      expect(res.headers.get('content-type')).to.match(/^text\/plain/)
+      expect(await res.text()).to.equal('hi')
+    })
+
+    it('should set content-type application/json for res.json()', async () => {
+      ctx.server.get('/j', async (req, res, next) => res.json({ a: 1 }))
+      await sleep()
+
+      const res = await fetch(`${url}/j`)
+      expect(res.headers.get('content-type')).to.match(/^application\/json/)
+      expect(await res.json()).to.deep.equal({ a: 1 })
+    })
+
+    it('should preserve user content-type when set before body', async () => {
+      ctx.server.get('/a', async (req, res, next) => {
+        res.headers.set('content-type', 'text/html')
+        return res.text('<p>hi</p>')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/a`)
+      expect(res.headers.get('content-type')).to.equal('text/html')
+      expect(await res.text()).to.equal('<p>hi</p>')
+    })
+
+    it('should preserve user content-type when set after body', async () => {
+      ctx.server.get('/b', async (req, res, next) => {
+        res.text('<p>hi</p>')
+        res.headers.set('content-type', 'text/html')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/b`)
+      expect(res.headers.get('content-type')).to.equal('text/html')
+      expect(await res.text()).to.equal('<p>hi</p>')
+    })
+
+    it('should overwrite body on subsequent writes', async () => {
+      ctx.server.get('/overwrite', async (req, res, next) => {
+        res.text('first')
+        return res.text('second')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/overwrite`)
+      expect(await res.text()).to.equal('second')
+    })
+  })
+
+  describe('stream body concurrent reads', () => {
+    beforeEach(async () => {
+      ({ ctx, url } = await setup())
+    })
+
+    function makeStream(chunks: string[]) {
+      return new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder()
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk))
+          }
+          controller.close()
+        },
+      })
+    }
+
+    it('should allow method read then flush via _end()', async () => {
+      let inspected: string | undefined
+      ctx.server.get('/stream', async (req, res, next) => {
+        res.body = makeStream(['hello', ' ', 'world'])
+        inspected = await res.text()
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/stream`)
+      expect(await res.text()).to.equal('hello world')
+      expect(inspected).to.equal('hello world')
+    })
+
+    it('should allow two concurrent method reads on the same stream body', async () => {
+      let a: string | undefined
+      let b: string | undefined
+      ctx.server.get('/stream', async (req, res, next) => {
+        res.body = makeStream(['foo', 'bar'])
+        const [x, y] = await Promise.all([res.text(), res.text()])
+        a = x
+        b = y
+        return res.text('done')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/stream`)
+      expect(await res.text()).to.equal('done')
+      expect(a).to.equal('foobar')
+      expect(b).to.equal('foobar')
+    })
+
+    it('should allow body getter read then flush via _end()', async () => {
+      ctx.server.get('/stream', async (req, res, next) => {
+        res.body = makeStream(['abc', 'def'])
+        const snapshot = res.body
+        expect(snapshot).to.be.instanceOf(ReadableStream)
+        const consumed = await new globalThis.Response(snapshot).text()
+        expect(consumed).to.equal('abcdef')
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/stream`)
+      expect(await res.text()).to.equal('abcdef')
     })
   })
 

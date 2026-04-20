@@ -88,11 +88,10 @@ export class Response {
   readonly headers = new Headers()
 
   private _bodyInit?: BodyInit | null
-  private _bodyUsed = false
+  private _claimed = false
 
   constructor(public _res: ServerResponse) {
     defineProperty(this, Service.tracker, { associate: 'server.response' })
-    _res.statusCode = 404
   }
 
   get status() {
@@ -101,6 +100,7 @@ export class Response {
 
   set status(value) {
     this._res.statusCode = value
+    this._claimed = true
   }
 
   get statusText() {
@@ -120,11 +120,21 @@ export class Response {
   }
 
   get body() {
+    if (this._bodyInit instanceof ReadableStream) {
+      const [a, b] = this._bodyInit.tee()
+      this._bodyInit = a
+      return b
+    }
     return new globalThis.Response(this._bodyInit).body
   }
 
-  get bodyUsed() {
-    return this._bodyUsed
+  set body(value: BodyInit | null) {
+    this._bodyInit = value
+    this._claimed = true
+  }
+
+  get claimed() {
+    return this._claimed
   }
 
   private _write(input: BodyInit | null) {
@@ -132,11 +142,8 @@ export class Response {
     for (const [k, v] of tmp.headers) {
       if (!this.headers.has(k)) this.headers.set(k, v)
     }
-    if (!this._bodyUsed && this._res.statusCode === 404) {
-      this._res.statusCode = 200
-    }
     this._bodyInit = input
-    this._bodyUsed = true
+    this._claimed = true
     return this
   }
 
@@ -144,7 +151,13 @@ export class Response {
     for (const method of ['arrayBuffer', 'blob', 'bytes', 'formData', 'json', 'text'] as const) {
       this.prototype[method] = function (this: Response, ...args: any[]) {
         if (args.length === 0) {
-          return new globalThis.Response(this._bodyInit)[method]()
+          let source = this._bodyInit
+          if (source instanceof ReadableStream) {
+            const [a, b] = source.tee()
+            this._bodyInit = a
+            source = b
+          }
+          return new globalThis.Response(source)[method]()
         }
         let data = args[0]
         if (method === 'json') {

@@ -151,7 +151,7 @@ class Server extends Service<Server.Intercept> {
         await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
       } catch (error) {
         this.ctx.logger?.error(error)
-        if (!res.bodyUsed) {
+        if (!res.claimed) {
           res.status = 500
         }
       }
@@ -168,7 +168,7 @@ class Server extends Service<Server.Intercept> {
         }
       }
 
-      if (res.bodyUsed) return
+      if (res.claimed) return
       const methods = new Set<string>()
       let asterisk = false
       for (const route of this.httpRoutes) {

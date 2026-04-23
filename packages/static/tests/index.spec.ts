@@ -23,7 +23,7 @@ async function setup(config: Partial<Static.Config> = {}) {
     root: pathToFileURL(fixturesDir).href + '/',
     ...config,
   })
-  return { ctx, url: ctx.server.selfUrl }
+  return { ctx, url: ctx.server.baseUrl }
 }
 
 describe('@cordisjs/plugin-server-static', () => {

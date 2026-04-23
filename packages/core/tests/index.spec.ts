@@ -15,7 +15,7 @@ async function setup(config: Partial<Server.Config> = {}) {
     maxPort: 39999,
     ...config,
   })
-  return { ctx, url: ctx.server.selfUrl }
+  return { ctx, url: ctx.server.baseUrl }
 }
 
 describe('@cordisjs/plugin-server', () => {
@@ -493,20 +493,20 @@ describe('@cordisjs/plugin-server', () => {
     })
   })
 
-  describe('selfUrl', () => {
-    it('should compute selfUrl from host and port', async () => {
+  describe('baseUrl', () => {
+    it('should compute baseUrl from host and port', async () => {
       ({ ctx } = await setup())
-      expect(ctx.server.selfUrl).to.match(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(ctx.server.baseUrl).to.match(/^http:\/\/127\.0\.0\.1:\d+$/)
     })
 
     it('should resolve wildcard host to 127.0.0.1', async () => {
       ({ ctx } = await setup({ host: '0.0.0.0' }))
-      expect(ctx.server.selfUrl).to.match(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(ctx.server.baseUrl).to.match(/^http:\/\/127\.0\.0\.1:\d+$/)
     })
 
-    it('should prefer config.selfUrl when set', async () => {
-      ({ ctx } = await setup({ selfUrl: 'https://example.com/' }))
-      expect(ctx.server.selfUrl).to.equal('https://example.com')
+    it('should prefer config.baseUrl when set', async () => {
+      ({ ctx } = await setup({ baseUrl: 'https://example.com/' }))
+      expect(ctx.server.baseUrl).to.equal('https://example.com')
     })
   })
 

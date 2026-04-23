@@ -127,6 +127,10 @@ class Server extends Service<Server.Intercept> {
     }
   }
 
+  Config: z<Server.Intercept> = z.object({
+    path: z.string().description('服务器监听的基础路径。'),
+  })
+
   public _http: http.Server
   public _ws: WebSocketServer
   public httpRoutes = new DisposableList<HttpRoute>()
@@ -241,8 +245,8 @@ class Server extends Service<Server.Intercept> {
       socket.destroy()
     })
 
-    if (config.selfUrl) {
-      config.selfUrl = trimSlash(config.selfUrl)
+    if (config.baseUrl) {
+      config.baseUrl = trimSlash(config.baseUrl)
     }
   }
 
@@ -257,17 +261,21 @@ class Server extends Service<Server.Intercept> {
     this.ctx.emit(this, 'server/ready')
   }
 
-  get selfUrl() {
-    if (this.config.selfUrl) return this.config.selfUrl
+  get baseUrl() {
+    const intercept = this[Service.resolveConfig]()
+    const pathPrefix = intercept.path ?? ''
+    if (this.config.baseUrl) return this.config.baseUrl + pathPrefix
     const wildcard = ['0.0.0.0', '::']
     const host = wildcard.includes(this.host) ? '127.0.0.1' : this.host
+    let root: string
     if (this.port === 80) {
-      return `http://${host}`
+      root = `http://${host}`
     } else if (this.port === 443) {
-      return `https://${host}`
+      root = `https://${host}`
     } else {
-      return `http://${host}:${this.port}`
+      root = `http://${host}:${this.port}`
     }
+    return root + pathPrefix
   }
 
   use(middleware: (req: Request, res: Response, next: () => Promise<void>) => Promise<void>) {
@@ -290,14 +298,14 @@ namespace Server {
     host: string
     port: number
     maxPort?: number
-    selfUrl?: string
+    baseUrl?: string
   }
 
   export const Config: z<Config> = z.object({
     host: z.string().default('127.0.0.1').description('要监听的 IP 地址。如果将此设置为 `0.0.0.0` 将监听所有地址，包括局域网和公网地址。'),
     port: z.natural().required().max(65535).description('要监听的初始端口号。'),
     maxPort: z.natural().max(65535).description('允许监听的最大端口号。'),
-    selfUrl: z.string().role('link').description('应用暴露在公网的地址。'),
+    baseUrl: z.string().role('link').description('应用暴露在公网的地址。'),
   })
 }
 

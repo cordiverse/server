@@ -22,7 +22,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
       port: 50000,
       maxPort: 50999,
     })
-    upstreamUrl = upstream.server.selfUrl
+    upstreamUrl = upstream.server.baseUrl
 
     // proxy server
     proxy = new Context()
@@ -35,7 +35,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
     await proxy.plugin(Proxy, {
       baseUrl: upstreamUrl,
     })
-    proxyUrl = proxy.server.selfUrl
+    proxyUrl = proxy.server.baseUrl
   })
 
   afterEach(async () => {
@@ -169,7 +169,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
       await scoped.plugin(Proxy, {
         baseUrl: upstreamUrl + '/api/v1/',
       })
-      const scopedUrl = scoped.server.selfUrl
+      const scopedUrl = scoped.server.baseUrl
 
       const res = await fetch(`${scopedUrl}/data`)
       expect(res.status).to.equal(200)

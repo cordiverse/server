@@ -1,0 +1,42 @@
+{
+  "name": "@cordisjs/plugin-server-echo",
+  "description": "Echo plugin for cordis",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib"
+  ],
+  "author": "Shigma <shigma10826@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cordiverse/server.git",
+    "directory": "packages/echo"
+  },
+  "bugs": {
+    "url": "https://github.com/cordiverse/server/issues"
+  },
+  "homepage": "https://github.com/cordiverse/server/tree/main/packages/echo",
+  "keywords": [
+    "cordis",
+    "echo",
+    "http",
+    "server",
+    "service",
+    "plugin",
+    "websocket"
+  ],
+  "peerDependencies": {
+    "@cordisjs/plugin-server": "^1.4.0",
+    "cordis": "^4.0.0-rc.3"
+  },
+  "devDependencies": {
+    "@cordisjs/plugin-server": "^1.4.0",
+    "cordis": "^4.0.0-rc.3"
+  },
+  "dependencies": {
+    "schemastery": "^3.18.0"
+  }
+}

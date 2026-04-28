@@ -1,4 +1,4 @@
-import { Context, DisposableList, Inject, Service } from 'cordis'
+import { Context, DisposableList, Fiber, Inject, Service } from 'cordis'
 import { Awaitable, defineProperty, trimSlash } from 'cosmokit'
 import type {} from '@cordisjs/plugin-logger'
 import * as http from 'node:http'
@@ -16,9 +16,8 @@ declare module 'cordis' {
   }
 
   interface Events {
-    'server/ready'(this: Server): void
     'server/request'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
-    'server/__route'(this: Server, req: Request, res: Response, next: () => Promise<globalThis.Response | void>): Promise<globalThis.Response | void>
+    'server/upgrade'(this: Server, req: Request, next: () => Promise<void>): Promise<void>
   }
 }
 
@@ -26,11 +25,13 @@ export abstract class Route {
   regexp: RegExp
   keys?: Keys
   config: Server.Intercept
+  fiber?: Fiber
 
   abstract dispose: () => void
 
   constructor(protected server: Server, label: string, public path: string | RegExp) {
     this.config = server[Server.resolveConfig]()
+    this.fiber = server.ctx.fiber
     const paths = [path]
     if (this.config.path) paths.unshift(this.config.path)
     server.ctx.logger?.('server:route').debug('register', label, ...paths)
@@ -97,12 +98,6 @@ class HttpRoute extends Route {
     const self = this
     this.dispose = server.ctx.effect(function* () {
       yield server.httpRoutes.push(self)
-      yield server.ctx.on('server/__route', async (req, res, next) => {
-        if (method !== 'all' && req.method.toLowerCase() !== method) return next()
-        const params = self.check(req)
-        if (!params) return next()
-        return callback(Object.assign(Object.create(req), { params }), res, next)
-      })
     }, `ctx.server.${method}(${typeof path === 'string' ? JSON.stringify(path) : path})`)
   }
 }
@@ -163,7 +158,18 @@ class Server extends Service<Server.Intercept> {
     })
 
     this.ctx.on('server/request', async (req, res, next) => {
-      const response = await this.ctx.waterfall(this, 'server/__route', req, res, next)
+      const routes = [...this.httpRoutes]
+      const runRoute = async (index: number): Promise<globalThis.Response | void> => {
+        for (let i = index; i < routes.length; i++) {
+          const route = routes[i]
+          if (route.method !== 'all' && req.method.toLowerCase() !== route.method) continue
+          const params = route.check(req)
+          if (!params) continue
+          return route.callback(Object.assign(Object.create(req), { params }), res, () => runRoute(i + 1))
+        }
+        await next()
+      }
+      const response = await runRoute(0)
       if (response) {
         res.body = response.body
         res.status = response.status
@@ -201,48 +207,50 @@ class Server extends Service<Server.Intercept> {
     this._http.on('upgrade', async (_req, socket, head) => {
       const req = new Request(_req)
       this.ctx.logger?.('server:ws').debug('upgrade %s', req.path)
-      for (const route of this.wsRoutes) {
-        const params = route.check(req)
-        if (!params) continue
-        let connection: WebSocket | undefined
-        const accept = () => new Promise<WebSocket>((resolve) => {
-          // handleUpgrade calls the callback synchronously upon success
-          this._ws.handleUpgrade(_req, socket, head, (ws) => {
-            connection = ws
-            this._ws.emit('connection', ws, _req)
-            route.clients.add(ws)
-            ws.on('close', () => {
-              route.clients.delete(ws)
-              this.ctx.logger?.('server:ws').debug('close %s', req.path)
+      await this.ctx.waterfall(this, 'server/upgrade', req, async () => {
+        for (const route of this.wsRoutes) {
+          const params = route.check(req)
+          if (!params) continue
+          let connection: WebSocket | undefined
+          const accept = () => new Promise<WebSocket>((resolve) => {
+            // handleUpgrade calls the callback synchronously upon success
+            this._ws.handleUpgrade(_req, socket, head, (ws) => {
+              connection = ws
+              this._ws.emit('connection', ws, _req)
+              route.clients.add(ws)
+              ws.on('close', () => {
+                route.clients.delete(ws)
+                this.ctx.logger?.('server:ws').debug('close %s', req.path)
+              })
+              this.ctx.logger?.('server:ws').debug('accept %s', req.path)
+              resolve(ws)
             })
-            this.ctx.logger?.('server:ws').debug('accept %s', req.path)
-            resolve(ws)
           })
-        })
-        if (!route.handle) {
-          await accept()
-          return
-        }
-        try {
-          await route.handle(Object.assign(Object.create(req), { params }), accept)
-        } catch (error) {
-          this.ctx.logger?.error(error)
-          if (connection) {
-            connection.close()
-          } else if (!socket.destroyed) {
-            socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n')
+          if (!route.handle) {
+            await accept()
+            return
+          }
+          try {
+            await route.handle(Object.assign(Object.create(req), { params }), accept)
+          } catch (error) {
+            this.ctx.logger?.error(error)
+            if (connection) {
+              connection.close()
+            } else if (!socket.destroyed) {
+              socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n')
+              socket.destroy()
+            }
+          }
+          if (!connection && !socket.destroyed) {
+            this.ctx.logger?.('server:ws').warn('ws handler for %s did not call accept()', req.path)
             socket.destroy()
           }
+          return
         }
-        if (!connection && !socket.destroyed) {
-          this.ctx.logger?.('server:ws').warn('ws handler for %s did not call accept()', req.path)
-          socket.destroy()
-        }
-        return
-      }
-      this.ctx.logger?.('server:ws').debug('refuse %s', req.path)
-      socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
-      socket.destroy()
+        this.ctx.logger?.('server:ws').debug('refuse %s', req.path)
+        socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
+        socket.destroy()
+      })
     })
 
     if (config.baseUrl) {
@@ -258,7 +266,6 @@ class Server extends Service<Server.Intercept> {
     })
     this.ctx.logger?.info('server listening at %c', `http://${this.host}:${this.port}`)
     yield () => this.ctx.logger?.info(`server closing at %c`, `http://${this.host}:${this.port}`)
-    this.ctx.emit(this, 'server/ready')
   }
 
   get baseUrl() {

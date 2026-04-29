@@ -29,18 +29,19 @@
     "plugin"
   ],
   "peerDependencies": {
-    "@cordisjs/plugin-http": "^1.4.0",
+    "@cordisjs/plugin-http": "^1.5.0",
     "@cordisjs/plugin-logger": "^1.0.2",
     "@cordisjs/plugin-server": "^1.5.0",
     "cordis": "^4.0.0-rc.4"
   },
   "devDependencies": {
-    "@cordisjs/plugin-http": "^1.4.0",
+    "@cordisjs/plugin-http": "^1.5.0",
     "@cordisjs/plugin-logger": "^1.0.2",
     "@cordisjs/plugin-server": "^1.5.0",
     "@types/chai": "^5.2.3",
     "chai": "^5.3.3",
-    "cordis": "^4.0.0-rc.4"
+    "cordis": "^4.0.0-rc.4",
+    "undici": "^8.1.0"
   },
   "dependencies": {
     "schemastery": "^3.18.0"

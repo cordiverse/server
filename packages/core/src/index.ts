@@ -1,5 +1,5 @@
 import { Context, DisposableList, Fiber, Inject, Service } from 'cordis'
-import { Awaitable, defineProperty, trimSlash } from 'cosmokit'
+import { Awaitable, defineProperty, Dict, trimSlash } from 'cosmokit'
 import type {} from '@cordisjs/plugin-logger'
 import * as http from 'node:http'
 import { ExtractParams, Keys, pathToRegexp } from 'path-to-regexp-typed'
@@ -17,8 +17,13 @@ declare module 'cordis' {
 
   interface Events {
     'server/request'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
+    'server/route-request'(this: Server, req: Request, res: Response, route: Route, next: () => Promise<globalThis.Response | void>): Promise<globalThis.Response | void>
     'server/upgrade'(this: Server, req: Request, next: () => Promise<void>): Promise<void>
   }
+}
+
+export namespace Route {
+  export interface Options {}
 }
 
 export abstract class Route {
@@ -29,7 +34,7 @@ export abstract class Route {
 
   abstract dispose: () => void
 
-  constructor(protected server: Server, label: string, public path: string | RegExp) {
+  constructor(protected server: Server, label: string, public path: string | RegExp, public options: Route.Options) {
     this.config = server[Server.resolveConfig]()
     this.fiber = server.ctx.fiber
     const paths = [path]
@@ -74,8 +79,8 @@ export class WsRoute extends Route {
   clients = new Set<WebSocket>()
   dispose: () => void
 
-  constructor(server: Server, path: string | RegExp, public handle?: WsHandler) {
-    super(server, 'WS', path)
+  constructor(server: Server, path: string | RegExp, public handle?: WsHandler, options: Route.Options = {}) {
+    super(server, 'WS', path, options)
     const self = this
     this.dispose = server.ctx.effect(function* () {
       yield server.wsRoutes.push(self)
@@ -93,8 +98,12 @@ export type Middleware<P = any> = (req: Request & { params: P }, res: Response, 
 class HttpRoute extends Route {
   dispose: () => void
 
-  constructor(server: Server, public method: string, path: string | RegExp, public callback: Middleware) {
-    super(server, method, path)
+  constructor(server: Server, public method: string, path: string | RegExp, public callback: Middleware, options: Route.Options = {}) {
+    super(server, method, path, options)
+    const key = typeof path === 'string' ? `${method.toUpperCase()} ${path}` : undefined
+    if (key) {
+      Object.assign(this.options, this.config.routes?.[key])
+    }
     const self = this
     this.dispose = server.ctx.effect(function* () {
       yield server.httpRoutes.push(self)
@@ -103,9 +112,9 @@ class HttpRoute extends Route {
 }
 
 interface RouteImpl {
-  <P extends string>(path: P, middleware: Middleware<ExtractParams<P>>): HttpRoute
-  (path: RegExp, middleware: Middleware<RegExpExecArray>): HttpRoute
-  (path: string | RegExp, middleware: Middleware): HttpRoute
+  <P extends string>(path: P, middleware: Middleware<ExtractParams<P>>, options?: Route.Options): HttpRoute
+  (path: RegExp, middleware: Middleware<RegExpExecArray>, options?: Route.Options): HttpRoute
+  (path: string | RegExp, middleware: Middleware, options?: Route.Options): HttpRoute
 }
 
 interface Server extends Record<typeof Server.methods[number], RouteImpl> {}
@@ -116,14 +125,15 @@ class Server extends Service<Server.Intercept> {
 
   static {
     for (const method of Server.methods) {
-      defineProperty(Server.prototype, method, function (this: Server, path: string | RegExp, middleware: Middleware) {
-        return new HttpRoute(this, method, path, middleware)
+      defineProperty(Server.prototype, method, function (this: Server, path: string | RegExp, middleware: Middleware, options?: Route.Options) {
+        return new HttpRoute(this, method, path, middleware, options)
       })
     }
   }
 
   Config: z<Server.Intercept> = z.object({
     path: z.string().description('服务器监听的基础路径。'),
+    routes: z.dict(z.any()).hidden(),
   })
 
   public _http: http.Server
@@ -165,7 +175,10 @@ class Server extends Service<Server.Intercept> {
           if (route.method !== 'all' && req.method.toLowerCase() !== route.method) continue
           const params = route.check(req)
           if (!params) continue
-          return route.callback(Object.assign(Object.create(req), { params }), res, () => runRoute(i + 1))
+          const matched = Object.assign(Object.create(req), { params })
+          return this.ctx.waterfall(this, 'server/route-request', matched, res, route, () => {
+            return route.callback(matched, res, () => runRoute(i + 1))
+          })
         }
         await next()
       }
@@ -289,16 +302,17 @@ class Server extends Service<Server.Intercept> {
     return this.ctx.on('server/request', middleware, { prepend: true })
   }
 
-  ws<P extends string>(path: P, callback?: WsHandler<ExtractParams<P>>): WsRoute
-  ws(path: RegExp, callback?: WsHandler<RegExpExecArray>): WsRoute
-  ws(path: string | RegExp, callback?: WsHandler) {
-    return new WsRoute(this, path, callback)
+  ws<P extends string>(path: P, callback?: WsHandler<ExtractParams<P>>, options?: Route.Options): WsRoute
+  ws(path: RegExp, callback?: WsHandler<RegExpExecArray>, options?: Route.Options): WsRoute
+  ws(path: string | RegExp, callback?: WsHandler, options?: Route.Options) {
+    return new WsRoute(this, path, callback, options)
   }
 }
 
 namespace Server {
   export interface Intercept {
     path?: string
+    routes?: Dict<Route.Options>
   }
 
   export interface Config extends ListenOptions {
@@ -316,4 +330,5 @@ namespace Server {
   })
 }
 
+export { Server }
 export default Server

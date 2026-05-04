@@ -300,6 +300,27 @@ describe('@cordisjs/plugin-server', () => {
       expect(res.status).to.equal(403)
       expect(await res.text()).to.equal('forbidden')
     })
+
+    it('should propagate a Response returned via next() so catch-alls can forward it', async () => {
+      ctx.server.get('{/*path}', async (req, res, next) => {
+        const response = await next()
+        if (response || res.claimed) return response
+        res.status = 200
+        res.headers.set('content-type', 'text/html; charset=utf-8')
+        res.body = '<fallback/>'
+      })
+
+      ctx.server.get('/api/thing', async () => {
+        return Response.json({ ok: true })
+      })
+
+      await sleep()
+
+      const res = await fetch(`${url}/api/thing`)
+      expect(res.status).to.equal(200)
+      expect(res.headers.get('content-type')).to.include('application/json')
+      expect(await res.json()).to.deep.equal({ ok: true })
+    })
   })
 
   describe('request body parsing', () => {
@@ -667,6 +688,121 @@ describe('@cordisjs/plugin-server', () => {
 
       const res2 = await fetch(`${url}/data`)
       expect(res2.status).to.equal(404)
+    })
+  })
+
+  describe('RouteOptions and server/route-request', () => {
+    beforeEach(async () => {
+      ({ ctx, url } = await setup())
+    })
+
+    it('should expose per-route options to server/route-request listeners', async () => {
+      const seen: any[] = []
+      ctx.on('server/route-request', async (req, res, route, next) => {
+        seen.push((route.options as any).tag)
+        return next()
+      })
+      ctx.server.get('/opts', async (req, res) => {
+        res.body = 'ok'
+      }, { tag: 'hello' } as any)
+      await sleep()
+
+      const res = await fetch(`${url}/opts`)
+      expect(res.status).to.equal(200)
+      expect(seen).to.deep.equal(['hello'])
+    })
+
+    it('should allow route-request listener to short-circuit before callback', async () => {
+      let reached = false
+      ctx.on('server/route-request', async (req, res, route, next) => {
+        res.status = 401
+        res.body = 'blocked'
+        // do not call next
+      })
+      ctx.server.get('/guard', async () => {
+        reached = true
+        return Response.json({ ok: true })
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/guard`)
+      expect(res.status).to.equal(401)
+      expect(await res.text()).to.equal('blocked')
+      expect(reached).to.equal(false)
+    })
+
+    it('intercept.routes should override per-route options on same key', async () => {
+      const scoped = ctx.intercept('server', {
+        routes: { 'GET /items': { tags: ['b', 'c'] } },
+      } as any)
+      let captured: any
+      scoped.on('server/route-request', async (req, res, route, next) => {
+        captured = route.options
+        return next()
+      })
+      scoped.server.get('/items', async (req, res) => {
+        res.body = 'ok'
+      }, { tags: ['a', 'b'] } as any)
+      await sleep()
+
+      await fetch(`${url}/items`)
+      expect(captured.tags).to.deep.equal(['b', 'c'])
+    })
+
+    it('intercept scalar should override per-route scalar', async () => {
+      const scoped = ctx.intercept('server', {
+        routes: { 'GET /scalar': { mode: 'strict' } },
+      } as any)
+      let captured: any
+      scoped.on('server/route-request', async (req, res, route, next) => {
+        captured = route.options
+        return next()
+      })
+      scoped.server.get('/scalar', async (req, res) => {
+        res.body = 'ok'
+      }, { mode: 'lax' } as any)
+      await sleep()
+
+      await fetch(`${url}/scalar`)
+      expect(captured.mode).to.equal('strict')
+    })
+
+    it('per-route keys absent from intercept are preserved', async () => {
+      const scoped = ctx.intercept('server', {
+        routes: { 'GET /mix': { b: 2 } },
+      } as any)
+      let captured: any
+      scoped.on('server/route-request', async (req, res, route, next) => {
+        captured = route.options
+        return next()
+      })
+      scoped.server.get('/mix', async (req, res) => {
+        res.body = 'ok'
+      }, { a: 1 } as any)
+      await sleep()
+
+      await fetch(`${url}/mix`)
+      expect(captured).to.deep.equal({ a: 1, b: 2 })
+    })
+
+    it('intercept key is method-specific', async () => {
+      const scoped = ctx.intercept('server', {
+        routes: { 'POST /same': { kind: 'post-only' } },
+      } as any)
+      const seen: any[] = []
+      scoped.on('server/route-request', async (req, res, route, next) => {
+        seen.push({ method: route.method, options: route.options })
+        return next()
+      })
+      scoped.server.get('/same', async (req, res) => { res.body = 'g' })
+      scoped.server.post('/same', async (req, res) => { res.body = 'p' })
+      await sleep()
+
+      await fetch(`${url}/same`)
+      await fetch(`${url}/same`, { method: 'POST' })
+      expect(seen).to.have.length(2)
+      expect(seen[0]).to.deep.equal({ method: 'get', options: {} })
+      expect(seen[1]).to.deep.equal({ method: 'post', options: { kind: 'post-only' } })
     })
   })
 })

@@ -1,5 +1,5 @@
 import { Context } from 'cordis'
-import { expect } from 'chai'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import * as http from 'node:http'
@@ -12,17 +12,22 @@ function sleep(ms = 0) {
 
 const fixturesDir = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 
+let portCursor = 40000
+
 async function setup(config: Partial<Static.Config> = {}) {
   const ctx = new Context()
   await ctx.plugin(Server, {
     host: '127.0.0.1',
-    port: 40000,
+    port: portCursor,
     maxPort: 49999,
   })
   await ctx.plugin(Static, {
     root: pathToFileURL(fixturesDir).href + '/',
     ...config,
   })
+  portCursor += 100
+  return { ctx, url: ctx.server.baseUrl }
+}
   return { ctx, url: ctx.server.baseUrl }
 }
 

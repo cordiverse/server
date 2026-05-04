@@ -1,5 +1,5 @@
 import { Context } from 'cordis'
-import { expect } from 'chai'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import HTTP from '@cordisjs/plugin-http'
 import Logger from '@cordisjs/plugin-logger'
 import Server from '@cordisjs/plugin-server'
@@ -8,6 +8,9 @@ import * as Proxy from '../src'
 function sleep(ms = 0) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
+
+let upstreamPort = 50000
+let proxyPort = 51000
 
 describe('@cordisjs/plugin-server-proxy', () => {
   let upstream: Context
@@ -20,7 +23,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
     upstream = new Context()
     await upstream.plugin(Server, {
       host: '127.0.0.1',
-      port: 50000,
+      port: upstreamPort,
       maxPort: 50999,
     })
     upstreamUrl = upstream.server.baseUrl
@@ -30,9 +33,11 @@ describe('@cordisjs/plugin-server-proxy', () => {
     await proxy.plugin(Logger)
     await proxy.plugin(Server, {
       host: '127.0.0.1',
-      port: 51000,
+      port: proxyPort,
       maxPort: 51999,
     })
+    upstreamPort += 100
+    proxyPort += 100
     await proxy.plugin(HTTP)
     await proxy.plugin(Proxy, {
       baseUrl: upstreamUrl,

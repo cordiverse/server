@@ -1,5 +1,5 @@
 import { Context } from 'cordis'
-import { expect } from 'chai'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import Server from '../src'
 
@@ -7,14 +7,17 @@ function sleep(ms = 0) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
+let portCursor = 30000
+
 async function setup(config: Partial<Server.Config> = {}) {
   const ctx = new Context()
   await ctx.plugin(Server, {
     host: '127.0.0.1',
-    port: 30000,
+    port: portCursor,
     maxPort: 39999,
     ...config,
   })
+  portCursor += 100
   return { ctx, url: ctx.server.baseUrl }
 }
 

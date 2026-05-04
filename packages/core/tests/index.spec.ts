@@ -691,7 +691,7 @@ describe('@cordisjs/plugin-server', () => {
     })
   })
 
-  describe('RouteOptions and server/route-request', () => {
+  describe('Route.Options and server/route-request', () => {
     beforeEach(async () => {
       ({ ctx, url } = await setup())
     })

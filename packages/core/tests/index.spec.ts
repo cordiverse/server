@@ -7,17 +7,13 @@ function sleep(ms = 0) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-let portCursor = 30000
-
 async function setup(config: Partial<Server.Config> = {}) {
   const ctx = new Context()
   await ctx.plugin(Server, {
     host: '127.0.0.1',
-    port: portCursor,
-    maxPort: 39999,
+    port: 0,
     ...config,
   })
-  portCursor += 100
   return { ctx, url: ctx.server.baseUrl }
 }
 
@@ -38,7 +34,7 @@ describe('@cordisjs/plugin-server', () => {
     })
 
     it('should fallback to next port if configured port is in use', async () => {
-      ({ ctx, url } = await setup({ port: 30010 }))
+      ({ ctx, url } = await setup({ port: 30010, maxPort: 30020 }))
       const port1 = ctx.server.port
 
       const ctx2 = new Context()

@@ -10,7 +10,8 @@ export function listen(server: net.Server, { host, port, maxPort = port }: Liste
   return new Promise<number>((resolve, reject) => {
     function onListen() {
       server.off('error', onError)
-      resolve(port)
+      const addr = server.address()
+      resolve(typeof addr === 'object' && addr ? addr.port : port)
     }
 
     function onError(err: NodeJS.ErrnoException) {

@@ -9,9 +9,6 @@ function sleep(ms = 0) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-let upstreamPort = 50000
-let proxyPort = 51000
-
 describe('@cordisjs/plugin-server-proxy', () => {
   let upstream: Context
   let proxy: Context
@@ -23,8 +20,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
     upstream = new Context()
     await upstream.plugin(Server, {
       host: '127.0.0.1',
-      port: upstreamPort,
-      maxPort: 50999,
+      port: 0,
     })
     upstreamUrl = upstream.server.baseUrl
 
@@ -33,11 +29,8 @@ describe('@cordisjs/plugin-server-proxy', () => {
     await proxy.plugin(Logger)
     await proxy.plugin(Server, {
       host: '127.0.0.1',
-      port: proxyPort,
-      maxPort: 51999,
+      port: 0,
     })
-    upstreamPort += 100
-    proxyPort += 100
     await proxy.plugin(HTTP)
     await proxy.plugin(Proxy, {
       baseUrl: upstreamUrl,
@@ -170,8 +163,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
       await scoped.plugin(Logger)
       await scoped.plugin(Server, {
         host: '127.0.0.1',
-        port: 52000,
-        maxPort: 52999,
+        port: 0,
       })
       await scoped.plugin(HTTP)
       await scoped.plugin(Proxy, {

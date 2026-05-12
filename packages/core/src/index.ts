@@ -17,6 +17,7 @@ declare module 'cordis' {
 
   interface Events {
     'server/request'(this: Server, req: Request, res: Response, next: () => Promise<void>): Promise<void>
+    'server/route-check'(this: Server, req: Request, route: Route): boolean | void
     'server/route-request'(this: Server, req: Request, res: Response, route: Route, next: () => Promise<globalThis.Response | void>): Promise<globalThis.Response | void>
     'server/upgrade'(this: Server, req: Request, next: () => Promise<void>): Promise<void>
   }
@@ -69,6 +70,8 @@ export abstract class Route {
       params = capture
     }
     this.server.ctx.logger?.('server:route').debug('match %s with params', this.path, params)
+    const matched = Object.assign(Object.create(req), { params })
+    if (this.server.ctx.bail(this.server, 'server/route-check', matched, this)) return
     return params
   }
 }
@@ -224,6 +227,7 @@ class Server extends Service<Server.Intercept> {
         for (const route of this.wsRoutes) {
           const params = route.check(req)
           if (!params) continue
+          const matched = Object.assign(Object.create(req), { params })
           let connection: WebSocket | undefined
           const accept = () => new Promise<WebSocket>((resolve) => {
             // handleUpgrade calls the callback synchronously upon success
@@ -244,7 +248,7 @@ class Server extends Service<Server.Intercept> {
             return
           }
           try {
-            await route.handle(Object.assign(Object.create(req), { params }), accept)
+            await route.handle(matched, accept)
           } catch (error) {
             this.ctx.logger?.error(error)
             if (connection) {

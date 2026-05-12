@@ -1,7 +1,7 @@
 import { Context } from 'cordis'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import HTTP from '@cordisjs/plugin-http'
-import Logger from '@cordisjs/plugin-logger'
+import LoggerConsole from '@cordisjs/plugin-logger-console'
 import Server from '@cordisjs/plugin-server'
 import * as Proxy from '../src'
 
@@ -26,7 +26,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
 
     // proxy server
     proxy = new Context().intercept('logger', { level: 3 })
-    await proxy.plugin(Logger)
+    await proxy.plugin(LoggerConsole)
     await proxy.plugin(Server, {
       host: '127.0.0.1',
       port: 0,
@@ -160,7 +160,7 @@ describe('@cordisjs/plugin-server-proxy', () => {
 
       // Create a new proxy with path prefix
       const scoped = new Context().intercept('logger', { level: 3 })
-      await scoped.plugin(Logger)
+      await scoped.plugin(LoggerConsole)
       await scoped.plugin(Server, {
         host: '127.0.0.1',
         port: 0,

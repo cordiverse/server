@@ -1,6 +1,5 @@
 import { Context } from 'cordis'
 import fetchFile from '@cordisjs/fetch-file'
-import type {} from '@cordisjs/plugin-logger'
 import type {} from '@cordisjs/plugin-server'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
@@ -30,15 +29,9 @@ export const Config: z<Config> = z.object({
   errorPages: z.dict(String),
 })
 
-export const inject = {
-  server: true,
-  logger: {
-    required: false,
-    config: {
-      name: 'server:static',
-    },
-  },
-}
+export const name = 'server:static'
+
+export const inject = ['server']
 
 export function apply(ctx: Context, config: Config) {
   const baseDir = fileURLToPath(new URL(config.root, ctx.baseUrl)).replace(/\/+$/, '')

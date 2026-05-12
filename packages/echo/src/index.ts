@@ -6,6 +6,8 @@ export interface Config {}
 
 export const Config: z<Config> = z.object({})
 
+export const name = 'server:echo'
+
 export const inject = ['server']
 
 export function apply(ctx: Context) {

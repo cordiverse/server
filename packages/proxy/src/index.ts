@@ -1,6 +1,5 @@
 import { Context } from 'cordis'
 import type {} from '@cordisjs/plugin-http'
-import type {} from '@cordisjs/plugin-logger'
 import type {} from '@cordisjs/plugin-server'
 import z from 'schemastery'
 
@@ -22,16 +21,9 @@ export const Config: z<Config> = z.object({
   baseUrl: z.string(),
 })
 
-export const inject = {
-  http: true,
-  server: true,
-  logger: {
-    required: false,
-    config: {
-      name: 'server:proxy',
-    },
-  },
-}
+export const name = 'server:proxy'
+
+export const inject = ['http', 'server']
 
 export function apply(ctx: Context, config: Config) {
   const upstreamBase = config.baseUrl ? config.baseUrl.replace(/\/+$/, '') + '/' : undefined

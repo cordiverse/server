@@ -1,6 +1,5 @@
 import { Context, DisposableList, Fiber, Inject, Service } from 'cordis'
 import { Awaitable, defineProperty, Dict, trimSlash } from 'cosmokit'
-import type {} from '@cordisjs/plugin-logger'
 import * as http from 'node:http'
 import { ExtractParams, Keys, pathToRegexp } from 'path-to-regexp-typed'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -122,7 +121,6 @@ interface RouteImpl {
 
 interface Server extends Record<typeof Server.methods[number], RouteImpl> {}
 
-@Inject('logger', false)
 class Server extends Service<Server.Intercept> {
   static readonly methods = ['all', 'get', 'delete', 'head', 'post', 'put', 'patch'] as const
 
@@ -155,9 +153,9 @@ class Server extends Service<Server.Intercept> {
     this._http.on('request', async (_req, _res) => {
       const req = new Request(_req)
       const res = new Response(_res)
-      this.ctx.logger?.('server:request').debug('%c %s', req.method, req.url)
+      this.ctx.logger?.('server:request').debug('%C %s', req.method, req.url)
       _res.on('finish', () => {
-        this.ctx.logger?.('server:response').debug('%c %s %s %s', req.method, req.url, res.status, res.statusText)
+        this.ctx.logger?.('server:response').debug('%C %s %s %s', req.method, req.url, res.status, res.statusText)
       })
       try {
         await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
@@ -281,8 +279,8 @@ class Server extends Service<Server.Intercept> {
     yield () => new Promise<void>((resolve, reject) => {
       this._http.close((err) => err ? reject(err) : resolve())
     })
-    this.ctx.logger?.info('server listening at %c', `http://${this.host}:${this.port}`)
-    yield () => this.ctx.logger?.info(`server closing at %c`, `http://${this.host}:${this.port}`)
+    this.ctx.logger?.info('server listening at %C', `http://${this.host}:${this.port}`)
+    yield () => this.ctx.logger?.info(`server closing at %C`, `http://${this.host}:${this.port}`)
   }
 
   get baseUrl() {

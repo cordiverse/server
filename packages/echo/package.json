@@ -29,12 +29,12 @@
     "websocket"
   ],
   "peerDependencies": {
-    "@cordisjs/plugin-server": "^1.6.2",
-    "cordis": "^4.0.0-rc.5"
+    "@cordisjs/plugin-server": "^1.7.0",
+    "cordis": "^4.0.0-rc.6"
   },
   "devDependencies": {
-    "@cordisjs/plugin-server": "^1.6.2",
-    "cordis": "^4.0.0-rc.5"
+    "@cordisjs/plugin-server": "^1.7.0",
+    "cordis": "^4.0.0-rc.6"
   },
   "dependencies": {
     "schemastery": "^3.18.0"

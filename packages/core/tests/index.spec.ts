@@ -358,6 +358,95 @@ describe('@cordisjs/plugin-server', () => {
     })
   })
 
+  describe('request body validation', () => {
+    beforeEach(async () => {
+      ({ ctx, url } = await setup())
+    })
+
+    const stringSchema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate(value: unknown) {
+          if (typeof value === 'string') return { value }
+          return { issues: [{ message: 'expected string', path: [] }] }
+        },
+        types: { input: '' as string, output: '' as string },
+      },
+    }
+
+    it('should pass validated body through', async () => {
+      ctx.server.post('/v', async (req, res, next) => {
+        const data = await req.json(stringSchema)
+        res.body = data.toUpperCase()
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/v`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify('hello'),
+      })
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.equal('HELLO')
+    })
+
+    it('should respond 422 with issues on validation failure', async () => {
+      ctx.server.post('/v', async (req, res, next) => {
+        const data = await req.json(stringSchema)
+        res.body = data
+      })
+      await sleep()
+
+      const res = await fetch(`${url}/v`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ not: 'a string' }),
+      })
+      expect(res.status).to.equal(422)
+      expect(res.headers.get('content-type')).to.match(/application\/json/)
+      const body = await res.json()
+      expect(body).to.have.property('issues')
+      expect(body.issues).to.be.an('array')
+      expect(body.issues[0]).to.have.property('message', 'expected string')
+    })
+
+    it('should support async validators', async () => {
+      const asyncSchema = {
+        '~standard': {
+          version: 1 as const,
+          vendor: 'test',
+          async validate(value: unknown) {
+            await sleep(1)
+            if (typeof value === 'number') return { value }
+            return { issues: [{ message: 'expected number' }] }
+          },
+          types: { input: 0 as number, output: 0 as number },
+        },
+      }
+      ctx.server.post('/a', async (req, res, next) => {
+        const n = await req.json(asyncSchema)
+        res.body = String(n * 2)
+      })
+      await sleep()
+
+      const ok = await fetch(`${url}/a`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(21),
+      })
+      expect(ok.status).to.equal(200)
+      expect(await ok.text()).to.equal('42')
+
+      const bad = await fetch(`${url}/a`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify('nope'),
+      })
+      expect(bad.status).to.equal(422)
+    })
+  })
+
   describe('response headers', () => {
     beforeEach(async () => {
       ({ ctx, url } = await setup())

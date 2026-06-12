@@ -4,7 +4,7 @@ import * as http from 'node:http'
 import { ExtractParams, Keys, pathToRegexp } from 'path-to-regexp-typed'
 import { WebSocket, WebSocketServer } from 'ws'
 import { listen, ListenOptions } from './listen'
-import { Request, Response } from './body'
+import { Request, Response, ValidationError } from './body'
 import z from 'schemastery'
 
 export * from './body'
@@ -160,9 +160,16 @@ class Server extends Service<Server.Intercept> {
       try {
         await this.ctx.waterfall(this, 'server/request', req, res, async () => {})
       } catch (error) {
-        this.ctx.logger?.error(error)
-        if (!res.claimed) {
-          res.status = 500
+        if (error instanceof ValidationError) {
+          if (!res.claimed) {
+            res.status = 422
+            res.json({ issues: error.issues })
+          }
+        } else {
+          this.ctx.logger?.error(error)
+          if (!res.claimed) {
+            res.status = 500
+          }
         }
       }
       res._end()

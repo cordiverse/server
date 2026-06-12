@@ -3,13 +3,23 @@ import { defineProperty, isNullable } from 'cosmokit'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import accepts from 'accepts'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+
+export class ValidationError extends Error {
+  name = 'ValidationError'
+
+  constructor(public issues: readonly StandardSchemaV1.Issue[]) {
+    super('Validation failed')
+  }
+}
 
 export interface Request {
-  arraybuffer(): Promise<ArrayBuffer>
+  arrayBuffer(): Promise<ArrayBuffer>
   blob(): Promise<Blob>
   bytes(): Promise<Uint8Array>
   formData(): Promise<FormData>
   json(): Promise<any>
+  json<S extends StandardSchemaV1>(schema: S): Promise<StandardSchemaV1.InferOutput<S>>
   text(): Promise<string>
 }
 
@@ -61,11 +71,19 @@ export class Request {
   }
 
   static {
-    for (const method of ['arrayBuffer', 'blob', 'bytes', 'formData', 'json', 'text'] as const) {
+    for (const method of ['arrayBuffer', 'blob', 'bytes', 'formData', 'text'] as const) {
       this.prototype[method] = function (this: Request) {
         return this._bodyImpl[method]()
-      }
+      } as any
     }
+  }
+
+  async json(schema?: StandardSchemaV1): Promise<any> {
+    const data = await this._bodyImpl.json()
+    if (!schema) return data
+    const result = await schema['~standard'].validate(data)
+    if (result.issues) throw new ValidationError(result.issues)
+    return result.value
   }
 }
 
